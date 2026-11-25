@@ -1,3 +1,4 @@
+import { demoApi, isLocalDemoMode } from './demoEngine';
 import type {
   ApiKeyRow,
   Category,
@@ -33,7 +34,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return json as T;
 }
 
-export const api = {
+const serverApi = {
   me: () =>
     request<{
       user: Member | null;
@@ -360,3 +361,14 @@ export const api = {
       method: 'POST',
     }),
 };
+
+type ApiClient = typeof serverApi;
+
+export const api: ApiClient = new Proxy(serverApi, {
+  get(target, prop, receiver) {
+    if (isLocalDemoMode() && prop in demoApi) {
+      return (demoApi as Record<PropertyKey, unknown>)[prop];
+    }
+    return Reflect.get(target, prop, receiver);
+  },
+});

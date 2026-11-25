@@ -18,6 +18,7 @@ interface Props {
   registrationCodeRequired?: boolean;
   storage: StorageStatus | null;
   onAuthenticated: (opts?: { isNewUser?: boolean }) => void;
+  onStartBrowserDemo: () => void;
 }
 
 type Mode = 'login' | 'magic' | 'register' | 'join';
@@ -28,6 +29,7 @@ export function AuthScreen({
   registrationCodeRequired = false,
   storage,
   onAuthenticated,
+  onStartBrowserDemo,
 }: Props) {
   const [mode, setMode] = useState<Mode>(initialInviteCode ? 'join' : 'login');
   const [loading, setLoading] = useState(false);
@@ -350,6 +352,25 @@ export function AuthScreen({
                       : 'Join Household'}
             </button>
           </form>
+
+          <div className="demo-try-box">
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>
+                Just want to explore first?
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                Try the full app in a private browser sandbox—no account or sign-up needed.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={loading}
+              onClick={onStartBrowserDemo}
+            >
+              <Sparkles size={14} /> Try Interactive Demo
+            </button>
+          </div>
 
           {demoMembers.length > 0 && (
             <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--border)' }}>

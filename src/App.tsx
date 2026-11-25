@@ -8,11 +8,19 @@ import {
   Home,
   LogOut,
   Redo2,
+  RotateCcw,
   Settings,
+  Sparkles,
   Undo2,
   Zap,
 } from 'lucide-react';
 import { api } from './api';
+import {
+  isLocalDemoMode,
+  resetLocalDemoState,
+  setLocalDemoMode,
+  switchLocalDemoMember,
+} from './demoEngine';
 import { ActivityLogView } from './components/ActivityLogView';
 import { AdHocEditModal } from './components/AdHocEditModal';
 import { AuthScreen } from './components/AuthScreen';
@@ -37,6 +45,7 @@ export default function App() {
   const [publicStorage, setPublicStorage] = useState<StorageStatus | null>(null);
   const [initialInviteCode, setInitialInviteCode] = useState<string | undefined>(undefined);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [localDemo, setLocalDemo] = useState(() => isLocalDemoMode());
 
   const [view, setView] = useState<ViewKey>('cockpit');
   const [settingsSubTab, setSettingsSubTab] = useState<
@@ -143,7 +152,14 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const magic = params.get('magic');
         const invite = params.get('invite');
+        const wantsDemo = params.get('demo') === '1' || params.get('demo') === 'true';
         if (invite) setInitialInviteCode(invite);
+        if (wantsDemo || isLocalDemoMode()) {
+          setLocalDemoMode(true);
+          setLocalDemo(true);
+          await loadDashboard();
+          return;
+        }
         if (magic) {
           try {
             await api.verifyMagicLink(magic);
@@ -187,7 +203,48 @@ export default function App() {
     }
   }
 
+  async function handleStartBrowserDemo() {
+    setLocalDemoMode(true);
+    setLocalDemo(true);
+    await loadDashboard();
+    showToast('Entered Interactive Demo — all changes stay locally in your browser.', 'info');
+  }
+
+  async function handleExitBrowserDemo() {
+    setLocalDemoMode(false);
+    setLocalDemo(false);
+    setDashboard(null);
+    setOnboardingOpen(false);
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('demo')) {
+      params.delete('demo');
+      const next = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${next ? `?${next}` : ''}`);
+    }
+    const me = await api.me();
+    setDemoMembers(me.demoMembers || []);
+    setRegistrationCodeRequired(Boolean(me.registrationCodeRequired));
+    setPublicStorage(me.storage);
+  }
+
+  async function handleResetBrowserDemo() {
+    resetLocalDemoState();
+    await loadDashboard();
+    showToast('Reset demo household back to sample data.', 'info');
+  }
+
+  async function handleSwitchBrowserDemoMember(memberId: string) {
+    switchLocalDemoMember(memberId);
+    await loadDashboard();
+    const picked = dashboard?.members.find((m) => m.id === memberId);
+    if (picked) showToast(`Now viewing demo as ${picked.name}.`, 'info');
+  }
+
   async function handleLogout() {
+    if (localDemo) {
+      await handleExitBrowserDemo();
+      return;
+    }
     await api.logout();
     setDashboard(null);
     setOnboardingOpen(false);
@@ -370,6 +427,7 @@ export default function App() {
           registrationCodeRequired={registrationCodeRequired}
           storage={publicStorage}
           onAuthenticated={handleAuthenticated}
+          onStartBrowserDemo={handleStartBrowserDemo}
         />
         {toast && <div className="toast">{toast.message}</div>}
       </>
@@ -559,11 +617,13 @@ export default function App() {
           >
             <span className={`status-dot ${dashboard.storage.shared.connected ? 'connected' : 'local'}`} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {dashboard.storage.shared.mode === 'postgres'
-                ? 'PostgreSQL Connected'
-                : dashboard.storage.shared.connected
-                  ? 'Sheets Connected'
-                  : 'Federated Local Mirror'}
+              {localDemo
+                ? 'Browser Sandbox Demo'
+                : dashboard.storage.shared.mode === 'postgres'
+                  ? 'PostgreSQL Connected'
+                  : dashboard.storage.shared.connected
+                    ? 'Sheets Connected'
+                    : 'Federated Local Mirror'}
             </span>
           </button>
 
@@ -587,6 +647,40 @@ export default function App() {
       </aside>
 
       <main className="main-area">
+        {localDemo && (
+          <div className="demo-banner">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Sparkles size={15} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <strong>Interactive Demo</strong>
+              <span style={{ color: 'var(--text-muted)' }}>
+                Changes stay locally in your browser—no account needed.
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Viewing as:
+                <select
+                  className="inline-select"
+                  value={dashboard.user.id}
+                  onChange={(e) => handleSwitchBrowserDemoMember(e.target.value)}
+                >
+                  {dashboard.members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name.split(' ')[0]} ({m.memberGroup})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleResetBrowserDemo}>
+                <RotateCcw size={13} /> Reset Demo
+              </button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleExitBrowserDemo}>
+                Exit to Sign In
+              </button>
+            </div>
+          </div>
+        )}
+
         {view === 'cockpit' && (
           <CockpitView
             data={dashboard}

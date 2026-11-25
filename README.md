@@ -2,6 +2,8 @@
 
 A calm, multi-household web app for planning **Tasks**, **Daily Habits**, **Multi-Step Projects**, and **Weather-Smart Outdoor Upkeep**—built for partners, roommates, and kids.
 
+> **Try it right now (no sign-up needed):** [Launch Interactive Browser Demo](https://homehub.jasonjacobs.net/?demo=1) — runs 100% locally in your browser via `localStorage`.
+
 Host one instance for your **friends & family** (backed by free PostgreSQL), or roll your own single-family instance backed by **Google Sheets** or **Docker**.
 
 ---
