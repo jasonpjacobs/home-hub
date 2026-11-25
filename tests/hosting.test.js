@@ -178,3 +178,48 @@ test('REGISTRATION_CODE gates new household signup, ENABLE_DEMO=false disables d
     else process.env.REGISTRATION_CODE = prevReg;
   }
 });
+
+test('magic-request in production never leaks previewLink, hides unknown emails, and enforces cooldown', async () => {
+  const prevNodeEnv = process.env.NODE_ENV;
+  const prevResend = process.env.RESEND_API_KEY;
+  process.env.NODE_ENV = 'production';
+  delete process.env.RESEND_API_KEY;
+
+  try {
+    const db = createMemoryDb();
+    const handler = createApiHandler(db);
+
+    // 1. Unknown email gets generic 200 (no account enumeration, no previewLink)
+    const unknownRes = await callApi(handler, {
+      method: 'POST',
+      path: '/api/auth/magic-request',
+      body: { email: 'stranger@unknown.example' },
+    });
+    assert.equal(unknownRes.status, 200);
+    assert.equal(unknownRes.data.previewLink, undefined);
+
+    // 2. Immediate repeat for same email is blocked by 2-minute cooldown
+    const repeatRes = await callApi(handler, {
+      method: 'POST',
+      path: '/api/auth/magic-request',
+      body: { email: 'stranger@unknown.example' },
+    });
+    assert.equal(repeatRes.status, 429);
+
+    // 3. Existing member when email delivery is unavailable returns 503 and NEVER exposes previewLink or stores token
+    const existingRes = await callApi(handler, {
+      method: 'POST',
+      path: '/api/auth/magic-request',
+      body: { email: 'maya@maplestreet.home' },
+    });
+    assert.equal(existingRes.status, 503);
+    assert.equal(existingRes.data.previewLink, undefined);
+    const maya = db.cache.Members.find((m) => m.email === 'maya@maplestreet.home');
+    assert.equal(maya.magicToken, '');
+  } finally {
+    if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevNodeEnv;
+    if (prevResend === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = prevResend;
+  }
+});

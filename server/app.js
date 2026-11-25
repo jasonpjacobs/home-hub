@@ -230,6 +230,7 @@ function describeUndoAction(method, normalizedPath, responseData, beforeSnap) {
 export function createApiHandler(db = new SheetDatabase()) {
   const historyByMember = new Map();
   const authHitsByIp = new Map();
+  const magicCooldownByEmail = new Map();
 
   function checkAuthRateLimit(req) {
     const ip =
@@ -1109,20 +1110,33 @@ export function createApiHandler(db = new SheetDatabase()) {
         const body = await readJsonBody(req);
         const email = String(body.email || '').trim().toLowerCase();
         if (!email) return sendJson(res, 400, { error: 'Please enter your email address.' });
+        const isProd = process.env.NODE_ENV === 'production';
+
+        // Per-email 2-minute cooldown prevents inbox flooding / Resend quota abuse
+        const lastSentAt = magicCooldownByEmail.get(email) || 0;
+        if (Date.now() - lastSentAt < 2 * 60 * 1000) {
+          return sendJson(res, 429, {
+            error: 'A sign-in link was recently requested for this email. Please check your inbox or wait 2 minutes.',
+          });
+        }
+
         const appUrl = getAppUrl(req);
         const result = await db.mutate(async (data) => {
           const member = data.Members.find((m) => m.email.toLowerCase() === email);
           if (!member) {
+            if (isProd) {
+              return { found: false, emailed: true, magicUrl: '' };
+            }
             throw Object.assign(
               new Error('No household member found with that email. Ask an admin for an invite link.'),
               { status: 404 },
             );
           }
-          const token = crypto.randomBytes(20).toString('hex');
+          const token = crypto.randomBytes(24).toString('hex');
           member.magicToken = token;
           member.magicTokenExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
           const magicUrl = `${appUrl}/?magic=${encodeURIComponent(token)}`;
-          const notification = {
+          const emailPayload = {
             id: makeId('ntf'),
             householdId: member.householdId,
             memberId: member.id,
@@ -1135,12 +1149,34 @@ export function createApiHandler(db = new SheetDatabase()) {
             readAt: '',
             createdAt: new Date().toISOString(),
           };
-          const delivery = await deliverExternalNotification(notification);
-          notification.channel = delivery.channel;
-          notification.deliveryStatus = delivery.deliveryStatus;
-          data.Notifications.unshift(notification);
-          return { magicUrl, emailed: delivery.channel === 'email' };
+          const delivery = await deliverExternalNotification(emailPayload);
+          if (isProd && delivery.channel !== 'email') {
+            member.magicToken = '';
+            member.magicTokenExpiresAt = '';
+            throw Object.assign(
+              new Error('Email delivery is temporarily unavailable. Please sign in with your password or try again shortly.'),
+              { status: 503 },
+            );
+          }
+          // Never persist the raw magic sign-in URL/token into the shared Notifications table
+          data.Notifications.unshift({
+            ...emailPayload,
+            body: 'A magic sign-in link was requested for your account (expires in 30 minutes).',
+            channel: delivery.channel,
+            deliveryStatus: delivery.deliveryStatus,
+          });
+          return { found: true, magicUrl, emailed: delivery.channel === 'email' };
         });
+
+        magicCooldownByEmail.set(email, Date.now());
+
+        if (isProd) {
+          return sendJson(res, 200, {
+            ok: true,
+            emailed: true,
+            message: 'If an account exists for that email, a sign-in link has been sent.',
+          });
+        }
         return sendJson(res, 200, {
           ok: true,
           emailed: result.emailed,
