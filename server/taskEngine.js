@@ -44,6 +44,15 @@ export function addDays(dateStr, days) {
   return formatDateUTC(d);
 }
 
+export function addMonthsClamped(dateStr, months) {
+  const d = parseDateStr(dateStr);
+  const origDay = d.getUTCDate();
+  const targetYear = d.getUTCFullYear();
+  const targetMonth = d.getUTCMonth() + months;
+  const lastDayOfTarget = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 12)).getUTCDate();
+  return formatDateUTC(new Date(Date.UTC(targetYear, targetMonth, Math.min(origDay, lastDayOfTarget), 12)));
+}
+
 export function diffDays(aStr, bStr) {
   const a = parseDateStr(aStr);
   const b = parseDateStr(bStr);
@@ -71,7 +80,12 @@ export function getCurrentSeason(dateStr) {
   return 'winter';
 }
 
-export function getWindowBounds(recurrenceType, anchorDateStr, targetSeason = '') {
+export function getWindowBounds(
+  recurrenceType,
+  anchorDateStr,
+  targetSeason = '',
+  recurrenceInterval = 1,
+) {
   const dt = parseDateStr(anchorDateStr);
   const y = dt.getUTCFullYear();
   const m = dt.getUTCMonth(); // 0..11
@@ -88,6 +102,13 @@ export function getWindowBounds(recurrenceType, anchorDateStr, targetSeason = ''
     const start = formatDateUTC(new Date(Date.UTC(y, m, 1, 12)));
     const end = formatDateUTC(new Date(Date.UTC(y, m + 1, 0, 12)));
     return { windowType: 'monthly', dueDate: start, windowEndDate: end };
+  }
+
+  if (recurrenceType === 'custom_months') {
+    const months = Math.max(1, Number(recurrenceInterval) || 1);
+    const start = formatDateUTC(new Date(Date.UTC(y, m, 1, 12)));
+    const end = formatDateUTC(new Date(Date.UTC(y, m + months, 0, 12)));
+    return { windowType: 'custom_months', dueDate: start, windowEndDate: end };
   }
 
   if (recurrenceType === 'quarterly') {
@@ -168,6 +189,10 @@ export function computeNextDueDate(task, fromDateStr, { inclusive = false } = {}
     return formatDateUTC(new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, targetDay, 12)));
   }
 
+  if (type === 'custom_months') {
+    return inclusive ? fromDateStr : addMonthsClamped(fromDateStr, interval);
+  }
+
   if (type === 'quarterly') {
     const base = parseDateStr(fromDateStr);
     const next = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + (inclusive ? 0 : 3), 1, 12));
@@ -229,7 +254,11 @@ export function reconcileOverdueInstances(instances, todayStr) {
       inst.reason = 'Auto-skipped after window passed';
       changed = true;
     } else if (policy === 'roll_forward') {
-      const bounds = getWindowBounds(inst.windowType || 'daily', todayStr);
+      const inferredMonths =
+        inst.windowType === 'custom_months' && inst.dueDate && inst.windowEndDate
+          ? Math.max(1, Math.round((Math.max(0, diffDays(inst.windowEndDate, inst.dueDate)) + 1) / 30))
+          : 1;
+      const bounds = getWindowBounds(inst.windowType || 'daily', todayStr, '', inferredMonths);
       inst.dueDate = bounds.dueDate;
       inst.windowEndDate = bounds.windowEndDate;
       inst.reason = 'Rolled forward into current window';
@@ -436,7 +465,12 @@ export function buildInstanceFromTask({
   let windowEndDate = anchorDateStr;
 
   if (task.cadenceMode === 'flexible_window') {
-    const bounds = getWindowBounds(task.recurrenceType || 'weekly', anchorDateStr, task.targetSeason);
+    const bounds = getWindowBounds(
+      task.recurrenceType || 'weekly',
+      anchorDateStr,
+      task.targetSeason,
+      task.recurrenceInterval,
+    );
     windowType = bounds.windowType;
     dueDate = bounds.dueDate;
     windowEndDate = bounds.windowEndDate;
@@ -445,10 +479,17 @@ export function buildInstanceFromTask({
     dueDate = anchorDateStr;
     windowEndDate = anchorDateStr;
   } else {
-    windowType =
-      ['weekly', 'monthly', 'quarterly', 'seasonal', 'yearly'].includes(task.recurrenceType)
-        ? task.recurrenceType
-        : 'daily';
+    windowType = [
+      'weekly',
+      'biweekly',
+      'monthly',
+      'custom_months',
+      'quarterly',
+      'seasonal',
+      'yearly',
+    ].includes(task.recurrenceType)
+      ? task.recurrenceType
+      : 'daily';
   }
 
   return {

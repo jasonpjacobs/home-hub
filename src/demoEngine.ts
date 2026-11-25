@@ -1784,6 +1784,7 @@ export const demoApi = {
     payload: Partial<Omit<Task, 'eligibleMemberIds'>> & {
       eligibleMemberIds?: string[] | string;
       firstDueDate?: string;
+      windowEndDate?: string;
       scheduleFirst?: boolean;
     },
   ) {
@@ -1874,9 +1875,11 @@ export const demoApi = {
             windowType: task.cadenceMode === 'flexible_window' ? task.recurrenceType : 'daily',
             dueDate: due,
             windowEndDate:
-              task.cadenceMode === 'flexible_window' && task.recurrenceType === 'weekly'
-                ? addDays(due, 6)
-                : due,
+              payload.windowEndDate && payload.windowEndDate >= due
+                ? payload.windowEndDate
+                : task.cadenceMode === 'flexible_window' && task.recurrenceType === 'weekly'
+                  ? addDays(due, 6)
+                  : due,
             triggerSource: task.projectId ? 'project' : 'schedule',
             weatherUrgency: '',
             weatherSummary: '',
@@ -1906,13 +1909,14 @@ export const demoApi = {
     payload: Partial<Omit<Task, 'eligibleMemberIds'>> & {
       eligibleMemberIds?: string[] | string;
       firstDueDate?: string;
+      windowEndDate?: string;
     },
   ) {
     const state = loadState();
     const before = cloneSnap(state);
     const t = state.tasks.find((x) => x.id === id);
     if (!t) throw new Error('Task not found');
-    const { eligibleMemberIds, firstDueDate, ...rest } = payload;
+    const { eligibleMemberIds, firstDueDate, windowEndDate, ...rest } = payload;
     Object.assign(t, rest);
     if (eligibleMemberIds !== undefined) {
       t.eligibleMemberIds = Array.isArray(eligibleMemberIds) ? eligibleMemberIds.join(',') : eligibleMemberIds;
@@ -1927,7 +1931,13 @@ export const demoApi = {
         inst.overduePolicy = t.overduePolicy;
         if (firstDueDate) {
           inst.dueDate = firstDueDate;
-          if (!inst.windowEndDate || inst.windowEndDate < firstDueDate) inst.windowEndDate = firstDueDate;
+          if (windowEndDate) {
+            inst.windowEndDate = windowEndDate >= firstDueDate ? windowEndDate : firstDueDate;
+          } else if (t.cadenceMode !== 'flexible_window' || !inst.windowEndDate || inst.windowEndDate < firstDueDate) {
+            inst.windowEndDate = firstDueDate;
+          }
+        } else if (windowEndDate) {
+          inst.windowEndDate = windowEndDate >= inst.dueDate ? windowEndDate : inst.dueDate;
         }
         if (t.assignmentMode === 'fixed' && fixedMember) {
           inst.assigneeId = fixedMember.id;

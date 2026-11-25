@@ -229,6 +229,7 @@ const serverApi = {
     payload: Partial<Omit<Task, 'eligibleMemberIds'>> & {
       eligibleMemberIds?: string[] | string;
       firstDueDate?: string;
+      windowEndDate?: string;
       scheduleFirst?: boolean;
     },
   ) =>
@@ -242,6 +243,7 @@ const serverApi = {
     payload: Partial<Omit<Task, 'eligibleMemberIds'>> & {
       eligibleMemberIds?: string[] | string;
       firstDueDate?: string;
+      windowEndDate?: string;
     },
   ) =>
     request<{ task: Task }>(`/api/tasks/${encodeURIComponent(id)}`, {

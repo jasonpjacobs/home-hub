@@ -19,6 +19,7 @@ interface Props {
   defaultParentTaskId?: string;
   defaultIsHabit?: boolean;
   activeDueDate?: string;
+  activeWindowEndDate?: string;
   categories: Category[];
   projects: Project[];
   allTasks: Task[];
@@ -32,8 +33,82 @@ interface Props {
     payload: Partial<Omit<Task, 'eligibleMemberIds'>> & {
       eligibleMemberIds?: string[];
       firstDueDate?: string;
+      windowEndDate?: string;
     },
   ) => Promise<void>;
+}
+
+function fmtUtcDate(dt: Date): string {
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+function computeDefaultWindow(
+  recurrenceType: Task['recurrenceType'],
+  anchorDateStr: string,
+  targetSeason: Task['targetSeason'] = '',
+  interval = 1,
+): { start: string; end: string } {
+  const [y, m1, d] = anchorDateStr.split('-').map(Number);
+  const m = (m1 || 1) - 1;
+  const dt = new Date(Date.UTC(y || 2026, m, d || 1, 12));
+
+  if (recurrenceType === 'weekly' || recurrenceType === 'biweekly') {
+    const dow = dt.getUTCDay();
+    const mondayOffset = dow === 0 ? -6 : 1 - dow;
+    const startDt = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate() + mondayOffset, 12));
+    const endDt = new Date(
+      Date.UTC(
+        startDt.getUTCFullYear(),
+        startDt.getUTCMonth(),
+        startDt.getUTCDate() + (recurrenceType === 'biweekly' ? 13 : 6),
+        12,
+      ),
+    );
+    return { start: fmtUtcDate(startDt), end: fmtUtcDate(endDt) };
+  }
+  if (recurrenceType === 'monthly') {
+    return {
+      start: fmtUtcDate(new Date(Date.UTC(y, m, 1, 12))),
+      end: fmtUtcDate(new Date(Date.UTC(y, m + 1, 0, 12))),
+    };
+  }
+  if (recurrenceType === 'custom_months') {
+    const months = Math.max(1, Number(interval) || 1);
+    return {
+      start: fmtUtcDate(new Date(Date.UTC(y, m, 1, 12))),
+      end: fmtUtcDate(new Date(Date.UTC(y, m + months, 0, 12))),
+    };
+  }
+  if (recurrenceType === 'quarterly') {
+    const qStart = Math.floor(m / 3) * 3;
+    return {
+      start: fmtUtcDate(new Date(Date.UTC(y, qStart, 1, 12))),
+      end: fmtUtcDate(new Date(Date.UTC(y, qStart + 3, 0, 12))),
+    };
+  }
+  if (recurrenceType === 'seasonal') {
+    const season = targetSeason || (m >= 2 && m <= 4 ? 'spring' : m >= 5 && m <= 7 ? 'summer' : m >= 8 && m <= 10 ? 'fall' : 'winter');
+    const ranges: Record<string, [number, number]> = {
+      spring: [2, 5],
+      summer: [5, 8],
+      fall: [8, 11],
+      winter: [11, 14],
+    };
+    const [sm, em] = ranges[season] || [8, 11];
+    let sy = y;
+    if (season === 'winter' && m <= 1) sy = y - 1;
+    let start = new Date(Date.UTC(sy, sm, 1, 12));
+    let end = new Date(Date.UTC(sy, em, 0, 12));
+    if (fmtUtcDate(end) < anchorDateStr) {
+      start = new Date(Date.UTC(sy + 1, sm, 1, 12));
+      end = new Date(Date.UTC(sy + 1, em, 0, 12));
+    }
+    return { start: fmtUtcDate(start), end: fmtUtcDate(end) };
+  }
+  if (recurrenceType === 'yearly') {
+    return { start: `${y}-01-01`, end: `${y}-12-31` };
+  }
+  return { start: anchorDateStr, end: anchorDateStr };
 }
 
 export function buildCategoryOptions(categories: Category[]) {
@@ -60,6 +135,7 @@ export function TaskModal({
   defaultParentTaskId,
   defaultIsHabit,
   activeDueDate,
+  activeWindowEndDate,
   categories,
   projects,
   allTasks,
@@ -117,21 +193,28 @@ export function TaskModal({
   );
   const [effort, setEffort] = useState<number>(task?.effort || (initialIsHabit ? 1 : 2));
 
-  const [cadenceMode, setCadenceMode] = useState<Task['cadenceMode']>(
-    task?.cadenceMode || (initialProject || initialIsHabit ? 'strict_date' : 'flexible_window'),
-  );
-  const [recurrenceType, setRecurrenceType] = useState<Task['recurrenceType']>(
-    task?.recurrenceType || (initialProject ? 'once' : initialIsHabit ? 'daily' : 'weekly'),
-  );
-  const [recurrenceInterval, setRecurrenceInterval] = useState<number>(
-    task?.recurrenceInterval || 1,
-  );
+  const initialCadenceMode: Task['cadenceMode'] =
+    task?.cadenceMode || (initialProject || initialIsHabit ? 'strict_date' : 'flexible_window');
+  const initialRecurrenceType: Task['recurrenceType'] =
+    task?.recurrenceType || (initialProject ? 'once' : initialIsHabit ? 'daily' : 'weekly');
+  const initialRecurrenceInterval = task?.recurrenceInterval || 1;
+  const initialTargetSeason: Task['targetSeason'] = task?.targetSeason || 'fall';
+  const defaultNewWindow =
+    !task && !initialProject && !initialIsHabit && initialCadenceMode === 'flexible_window'
+      ? computeDefaultWindow(initialRecurrenceType, todayStr, initialTargetSeason, initialRecurrenceInterval)
+      : null;
+  const initialDueDate =
+    activeDueDate || initialProject?.targetDate || defaultNewWindow?.start || todayStr;
+  const initialWindowEndDate =
+    activeWindowEndDate || activeDueDate || defaultNewWindow?.end || initialDueDate;
+
+  const [cadenceMode, setCadenceMode] = useState<Task['cadenceMode']>(initialCadenceMode);
+  const [recurrenceType, setRecurrenceType] = useState<Task['recurrenceType']>(initialRecurrenceType);
+  const [recurrenceInterval, setRecurrenceInterval] = useState<number>(initialRecurrenceInterval);
   const [selectedDays, setSelectedDays] = useState<string[]>(
     task?.recurrenceDays ? task.recurrenceDays.split(',').filter(Boolean) : ['Sat'],
   );
-  const [targetSeason, setTargetSeason] = useState<Task['targetSeason']>(
-    task?.targetSeason || 'fall',
-  );
+  const [targetSeason, setTargetSeason] = useState<Task['targetSeason']>(initialTargetSeason);
   const [weatherTrigger, setWeatherTrigger] = useState(task?.weatherTrigger || 'none');
   const [overduePolicy, setOverduePolicy] = useState<Task['overduePolicy']>(
     task?.overduePolicy || (initialIsHabit ? 'auto_skip' : 'carry_over'),
@@ -145,7 +228,9 @@ export function TaskModal({
     }
     return task?.eligibleMemberIds ? task.eligibleMemberIds.split(',').filter(Boolean) : [];
   });
-  const [dueDate, setDueDate] = useState(activeDueDate || initialProject?.targetDate || todayStr);
+  const [dueDate, setDueDate] = useState(initialDueDate);
+  const [windowEndDate, setWindowEndDate] = useState(initialWindowEndDate);
+  const [dateTouched, setDateTouched] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -291,7 +376,15 @@ export function TaskModal({
         eligibleMemberIds: visibility === 'private' ? [currentUser.id] : selectedMemberIds,
         fixedMemberId:
           visibility === 'private' ? currentUser.id : effectiveFixedMemberId,
-        firstDueDate: finalCadenceMode === 'strict_date' ? dueDate : undefined,
+        firstDueDate: finalCadenceMode !== 'weather_triggered' ? dueDate : undefined,
+        windowEndDate:
+          finalCadenceMode === 'flexible_window'
+            ? windowEndDate >= dueDate
+              ? windowEndDate
+              : dueDate
+            : finalCadenceMode === 'strict_date'
+              ? dueDate
+              : undefined,
       });
       onClose();
     } catch (err: any) {
@@ -304,7 +397,9 @@ export function TaskModal({
   const isDirty = Boolean(
     title !== (task?.title || '') ||
       description !== (task?.description || '') ||
-      categoryId !== initialCategoryId,
+      categoryId !== initialCategoryId ||
+      dueDate !== initialDueDate ||
+      windowEndDate !== initialWindowEndDate,
   );
 
   function activateHabitMode() {
@@ -681,7 +776,17 @@ export function TaskModal({
                       id="task-cadence"
                       className="select"
                       value={cadenceMode}
-                      onChange={(e) => setCadenceMode(e.target.value as Task['cadenceMode'])}
+                      onChange={(e) => {
+                        const nextMode = e.target.value as Task['cadenceMode'];
+                        setCadenceMode(nextMode);
+                        if (nextMode === 'flexible_window' && !dateTouched) {
+                          const w = computeDefaultWindow(recurrenceType, dueDate || todayStr, targetSeason, recurrenceInterval);
+                          setDueDate(w.start);
+                          setWindowEndDate(w.end);
+                        } else if (nextMode === 'strict_date') {
+                          setWindowEndDate(dueDate);
+                        }
+                      }}
                     >
                       <option value="flexible_window">Flexible Window (anytime in period)</option>
                       <option value="strict_date">Strict Due Date(s)</option>
@@ -694,12 +799,26 @@ export function TaskModal({
                       id="task-rec"
                       className="select"
                       value={recurrenceType}
-                      onChange={(e) => setRecurrenceType(e.target.value as Task['recurrenceType'])}
+                      onChange={(e) => {
+                        const nextRec = e.target.value as Task['recurrenceType'];
+                        setRecurrenceType(nextRec);
+                        let nextInt = recurrenceInterval;
+                        if (nextRec === 'custom_months' && recurrenceInterval === 1) {
+                          nextInt = 2;
+                          setRecurrenceInterval(2);
+                        }
+                        if (cadenceMode === 'flexible_window' && !dateTouched) {
+                          const w = computeDefaultWindow(nextRec, todayStr, targetSeason, nextInt);
+                          setDueDate(w.start);
+                          setWindowEndDate(w.end);
+                        }
+                      }}
                     >
                       <option value="daily">Daily</option>
                       <option value="weekly">Weekly</option>
                       <option value="biweekly">Every 2 Weeks</option>
                       <option value="monthly">Monthly</option>
+                      <option value="custom_months">Every N Months</option>
                       <option value="quarterly">Quarterly</option>
                       <option value="seasonal">Seasonal (Spring/Summer/Fall/Winter)</option>
                       <option value="yearly">Yearly</option>
@@ -735,7 +854,15 @@ export function TaskModal({
                     id="task-season"
                     className="select"
                     value={targetSeason}
-                    onChange={(e) => setTargetSeason(e.target.value as Task['targetSeason'])}
+                    onChange={(e) => {
+                      const nextSeason = e.target.value as Task['targetSeason'];
+                      setTargetSeason(nextSeason);
+                      if (cadenceMode === 'flexible_window' && !dateTouched) {
+                        const w = computeDefaultWindow('seasonal', todayStr, nextSeason, recurrenceInterval);
+                        setDueDate(w.start);
+                        setWindowEndDate(w.end);
+                      }
+                    }}
                   >
                     <option value="spring">Spring (Mar–May)</option>
                     <option value="summer">Summer (Jun–Aug)</option>
@@ -746,19 +873,37 @@ export function TaskModal({
               )}
 
               {cadenceMode !== 'weather_triggered' &&
-                (recurrenceType === 'custom_days' || recurrenceType === 'monthly') && (
+                (recurrenceType === 'custom_days' ||
+                  recurrenceType === 'custom_months' ||
+                  recurrenceType === 'monthly') && (
                   <div className="field">
                     <label htmlFor="task-int">
-                      {recurrenceType === 'monthly' ? 'Day of Month (1–28)' : 'Repeat Every (Days)'}
+                      {recurrenceType === 'monthly'
+                        ? 'Day of Month (1–28)'
+                        : recurrenceType === 'custom_months'
+                          ? 'Repeat Every (Months)'
+                          : 'Repeat Every (Days)'}
                     </label>
                     <input
                       id="task-int"
                       type="number"
                       min={1}
-                      max={recurrenceType === 'monthly' ? 28 : 180}
+                      max={recurrenceType === 'monthly' ? 28 : recurrenceType === 'custom_months' ? 60 : 365}
                       className="input"
                       value={recurrenceInterval}
-                      onChange={(e) => setRecurrenceInterval(Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = Math.max(1, Number(e.target.value) || 1);
+                        setRecurrenceInterval(val);
+                        if (
+                          recurrenceType === 'custom_months' &&
+                          cadenceMode === 'flexible_window' &&
+                          !dateTouched
+                        ) {
+                          const w = computeDefaultWindow('custom_months', dueDate || todayStr, targetSeason, val);
+                          setDueDate(w.start);
+                          setWindowEndDate(w.end);
+                        }
+                      }}
                     />
                   </div>
                 )}
@@ -766,34 +911,108 @@ export function TaskModal({
           )}
 
           {!isHabit && (
-            <div className={isProjectTask || cadenceMode === 'strict_date' ? 'form-row-2' : undefined}>
-              <div className="field">
-                <label htmlFor="task-overdue">If Missed / Overdue Behavior</label>
-                <select
-                  id="task-overdue"
-                  className="select"
-                  value={overduePolicy}
-                  onChange={(e) => setOverduePolicy(e.target.value as Task['overduePolicy'])}
-                >
-                  <option value="carry_over">Carry Over (Must be done — e.g. Pay mortgage)</option>
-                  <option value="roll_forward">Roll Forward (Slide cleanly to next window)</option>
-                  <option value="auto_skip">Auto-Skip (Skip if missed — e.g. Shoulder PT)</option>
-                </select>
+            <>
+              <div className={isProjectTask || cadenceMode === 'strict_date' ? 'form-row-2' : undefined}>
+                <div className="field">
+                  <label htmlFor="task-overdue">If Missed / Overdue Behavior</label>
+                  <select
+                    id="task-overdue"
+                    className="select"
+                    value={overduePolicy}
+                    onChange={(e) => setOverduePolicy(e.target.value as Task['overduePolicy'])}
+                  >
+                    <option value="carry_over">Carry Over (Must be done — e.g. Pay mortgage)</option>
+                    <option value="roll_forward">Roll Forward (Slide cleanly to next window)</option>
+                    <option value="auto_skip">Auto-Skip (Skip if missed — e.g. Shoulder PT)</option>
+                  </select>
+                </div>
+
+                {(isProjectTask || cadenceMode === 'strict_date') && (
+                  <div className="field">
+                    <label htmlFor="task-due">{task || isProjectTask ? 'Due Date' : 'First Due Date'}</label>
+                    <CalendarDatePicker
+                      id="task-due"
+                      value={dueDate}
+                      onChange={(next) => {
+                        setDateTouched(true);
+                        setDueDate(next);
+                        setWindowEndDate(next);
+                      }}
+                      align="right"
+                      placement="up"
+                    />
+                  </div>
+                )}
               </div>
 
-              {(isProjectTask || cadenceMode === 'strict_date') && (
+              {!isProjectTask && cadenceMode === 'flexible_window' && (
                 <div className="field">
-                  <label htmlFor="task-due">{task || isProjectTask ? 'Due Date' : 'First Due Date'}</label>
-                  <CalendarDatePicker
-                    id="task-due"
-                    value={dueDate}
-                    onChange={setDueDate}
-                    align="right"
-                    placement="up"
-                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <label style={{ marginBottom: 0 }}>
+                      {task ? 'Current Target Window' : 'First Target Window'}
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 6px', fontSize: '0.75rem' }}
+                      onClick={() => {
+                        const w = computeDefaultWindow(
+                          recurrenceType,
+                          dueDate || todayStr,
+                          targetSeason,
+                          recurrenceInterval,
+                        );
+                        setDueDate(w.start);
+                        setWindowEndDate(w.end);
+                        setDateTouched(false);
+                      }}
+                    >
+                      Auto-fit to period
+                    </button>
+                  </div>
+                  <div className="form-row-2" style={{ marginTop: 4 }}>
+                    <div className="field">
+                      <label htmlFor="task-win-start" style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                        Window Start
+                      </label>
+                      <CalendarDatePicker
+                        id="task-win-start"
+                        value={dueDate}
+                        onChange={(next) => {
+                          setDateTouched(true);
+                          setDueDate(next);
+                          if (windowEndDate < next) setWindowEndDate(next);
+                        }}
+                        placement="up"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="task-win-end" style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                        Window End (Due By)
+                      </label>
+                      <CalendarDatePicker
+                        id="task-win-end"
+                        value={windowEndDate}
+                        onChange={(next) => {
+                          setDateTouched(true);
+                          setWindowEndDate(next);
+                          if (dueDate > next) setDueDate(next);
+                        }}
+                        align="right"
+                        placement="up"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
+            </>
           )}
 
           {visibility === 'household' && (

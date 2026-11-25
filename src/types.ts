@@ -87,6 +87,7 @@ export interface Task {
     | 'weekly'
     | 'biweekly'
     | 'monthly'
+    | 'custom_months'
     | 'quarterly'
     | 'seasonal'
     | 'yearly'

@@ -183,13 +183,22 @@ export function HorizonsView({
         return i.windowType === 'monthly' || (i.dueDate <= monthLimit && i.windowType !== 'yearly');
       }
       if (horizon === 'quarterly') {
-        return i.windowType === 'quarterly' || (i.dueDate <= quarterLimit && i.windowType !== 'daily');
+        return (
+          i.windowType === 'quarterly' ||
+          i.windowType === 'custom_months' ||
+          (i.dueDate <= quarterLimit && i.windowType !== 'daily')
+        );
       }
       if (horizon === 'seasonal') {
         return i.windowType === 'seasonal' || i.triggerSource === 'weather';
       }
       if (horizon === 'yearly') {
-        return i.windowType === 'yearly' || i.windowType === 'seasonal' || i.windowType === 'quarterly';
+        return (
+          i.windowType === 'yearly' ||
+          i.windowType === 'seasonal' ||
+          i.windowType === 'quarterly' ||
+          i.windowType === 'custom_months'
+        );
       }
       return true;
     });

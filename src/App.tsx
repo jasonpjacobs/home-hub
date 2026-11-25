@@ -864,19 +864,28 @@ export default function App() {
         ))}
       </nav>
 
-      {taskModalOpen && (
-        <TaskModal
-          task={editingTask}
-          defaultCategoryId={defaultCategoryId}
-          defaultProjectId={defaultProjectId}
-          defaultParentTaskId={defaultParentTaskId}
-          defaultIsHabit={defaultIsHabit}
-          activeDueDate={
-            editingTask
-              ? dashboard.instances.find((i) => i.taskId === editingTask.id && i.status === 'pending')
-                  ?.dueDate
-              : undefined
-          }
+      {taskModalOpen && (() => {
+        const activeOpenInst = editingTask
+          ? dashboard.instances
+              .filter(
+                (i) =>
+                  i.taskId === editingTask.id &&
+                  (i.status === 'pending' ||
+                    i.status === 'started' ||
+                    i.status === 'on_hold' ||
+                    i.status === 'gated'),
+              )
+              .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''))[0]
+          : undefined;
+        return (
+          <TaskModal
+            task={editingTask}
+            defaultCategoryId={defaultCategoryId}
+            defaultProjectId={defaultProjectId}
+            defaultParentTaskId={defaultParentTaskId}
+            defaultIsHabit={defaultIsHabit}
+            activeDueDate={activeOpenInst?.dueDate}
+            activeWindowEndDate={activeOpenInst?.windowEndDate}
           categories={dashboard.categories}
           projects={dashboard.projects}
           allTasks={dashboard.tasks}
@@ -897,7 +906,8 @@ export default function App() {
           }}
           onSave={handleSaveTask}
         />
-      )}
+        );
+      })()}
 
       {detailTarget && (
         <TaskDetailModal

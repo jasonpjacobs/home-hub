@@ -779,7 +779,18 @@ export function TasksTreeView({
                                   <Repeat size={12} />
                                   {t.cadenceMode === 'weather_triggered'
                                     ? 'Weather-triggered'
-                                    : `${t.cadenceMode === 'flexible_window' ? 'Flexible ' : ''}${t.recurrenceType}${t.targetSeason ? ` (${t.targetSeason})` : ''}`}
+                                    : (() => {
+                                        const pref = t.cadenceMode === 'flexible_window' ? 'Flexible ' : '';
+                                        if (t.recurrenceType === 'custom_days') {
+                                          const n = t.recurrenceInterval || 1;
+                                          return `${pref}every ${n} ${n === 1 ? 'day' : 'days'}`;
+                                        }
+                                        if (t.recurrenceType === 'custom_months') {
+                                          const n = t.recurrenceInterval || 1;
+                                          return `${pref}every ${n} ${n === 1 ? 'month' : 'months'}`;
+                                        }
+                                        return `${pref}${t.recurrenceType}${t.targetSeason ? ` (${t.targetSeason})` : ''}`;
+                                      })()}
                                 </span>
                               )}
                               <span>&middot;</span>

@@ -35,6 +35,21 @@ test('window bounds & next due dates support quarterly, seasonal, and yearly hor
 
   assert.equal(computeNextDueDate({ recurrenceType: 'yearly' }, '2026-11-24'), '2027-01-01');
   assert.equal(computeNextDueDate({ recurrenceType: 'quarterly' }, '2026-10-01'), '2027-01-01');
+
+  // Every N months (custom_months): window bounds + clamped month advancement
+  const every6 = getWindowBounds('custom_months', '2026-11-25', '', 6);
+  assert.equal(every6.windowType, 'custom_months');
+  assert.equal(every6.dueDate, '2026-11-01');
+  assert.equal(every6.windowEndDate, '2027-04-30');
+
+  assert.equal(
+    computeNextDueDate({ recurrenceType: 'custom_months', recurrenceInterval: 6 }, '2026-11-25'),
+    '2027-05-25',
+  );
+  assert.equal(
+    computeNextDueDate({ recurrenceType: 'custom_months', recurrenceInterval: 1 }, '2026-01-31'),
+    '2026-02-28',
+  );
 });
 
 test('reconcileOverdueInstances respects carry_over, auto_skip, and roll_forward', () => {

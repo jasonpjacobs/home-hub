@@ -93,7 +93,12 @@ function formatScheduleLabel(task?: Task, inst?: TaskInstance): string {
     return `${prefix}Seasonal (${task.targetSeason})`;
   }
   if (task.recurrenceType === 'custom_days') {
-    return `Every ${task.recurrenceInterval || 1} days`;
+    const n = task.recurrenceInterval || 1;
+    return `${prefix}Every ${n} ${n === 1 ? 'day' : 'days'}`;
+  }
+  if (task.recurrenceType === 'custom_months') {
+    const n = task.recurrenceInterval || 1;
+    return `${prefix}Every ${n} ${n === 1 ? 'month' : 'months'}`;
   }
   return `${prefix}${task.recurrenceType.charAt(0).toUpperCase()}${task.recurrenceType.slice(1)}`;
 }

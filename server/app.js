@@ -649,6 +649,18 @@ export function createApiHandler(db = new SheetDatabase()) {
         anchorDateStr: anchor,
         triggerSource: task.projectId ? 'project' : 'schedule',
       });
+      if (body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate)) {
+        createdInstance.dueDate = body.firstDueDate;
+        if (body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate)) {
+          createdInstance.windowEndDate =
+            body.windowEndDate >= body.firstDueDate ? body.windowEndDate : body.firstDueDate;
+        } else if (task.cadenceMode !== 'flexible_window' || createdInstance.windowEndDate < body.firstDueDate) {
+          createdInstance.windowEndDate = body.firstDueDate;
+        }
+      } else if (body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate)) {
+        createdInstance.windowEndDate =
+          body.windowEndDate >= createdInstance.dueDate ? body.windowEndDate : createdInstance.dueDate;
+      }
       if (createdInstance.assigneeId) {
         task.lastAssignedMemberId = createdInstance.assigneeId;
       }
@@ -2470,8 +2482,28 @@ export function createApiHandler(db = new SheetDatabase()) {
 
           const newPath = catPathMap.get(t.categoryId) || 'General';
           const fixedMember = t.fixedMemberId ? hhMembers.find((m) => m.id === t.fixedMemberId) : null;
+          const nextWindowType = [
+            'weekly',
+            'biweekly',
+            'monthly',
+            'custom_months',
+            'quarterly',
+            'seasonal',
+            'yearly',
+          ].includes(t.recurrenceType)
+            ? t.recurrenceType
+            : 'daily';
+          const hasDateOverride = Boolean(
+            body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate),
+          );
+          const hasEndOverride = Boolean(
+            body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate),
+          );
+          let updatedOpenCount = 0;
+
           for (const inst of store.TaskInstances) {
-            if (inst.taskId === t.id && inst.status === 'pending') {
+            if (inst.taskId === t.id && isOpenStatus(inst.status)) {
+              updatedOpenCount++;
               inst.taskTitle = t.title;
               inst.categoryPath = newPath;
               inst.projectId = t.projectId || '';
@@ -2479,11 +2511,25 @@ export function createApiHandler(db = new SheetDatabase()) {
               inst.overduePolicy = t.overduePolicy;
               inst.eligibleMemberIds = t.eligibleMemberIds;
               inst.assignmentMode = t.assignmentMode;
-              if (body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate)) {
+              if (body.cadenceMode !== undefined || body.recurrenceType !== undefined) {
+                inst.windowType = nextWindowType;
+              }
+              if (hasDateOverride) {
                 inst.dueDate = body.firstDueDate;
-                if (!inst.windowEndDate || inst.windowEndDate < body.firstDueDate || inst.windowType === 'daily') {
+                if (hasEndOverride) {
+                  inst.windowEndDate =
+                    body.windowEndDate >= body.firstDueDate ? body.windowEndDate : body.firstDueDate;
+                } else if (
+                  t.cadenceMode !== 'flexible_window' ||
+                  !inst.windowEndDate ||
+                  inst.windowEndDate < body.firstDueDate ||
+                  inst.windowType === 'daily'
+                ) {
                   inst.windowEndDate = body.firstDueDate;
                 }
+              } else if (hasEndOverride) {
+                inst.windowEndDate =
+                  body.windowEndDate >= inst.dueDate ? body.windowEndDate : inst.dueDate;
               }
               if (body.assignmentMode === 'fixed' && fixedMember) {
                 inst.assigneeId = fixedMember.id;
@@ -2493,6 +2539,32 @@ export function createApiHandler(db = new SheetDatabase()) {
                 inst.assigneeName = '';
               }
             }
+          }
+
+          if (
+            updatedOpenCount === 0 &&
+            hasDateOverride &&
+            t.active !== false &&
+            t.cadenceMode !== 'weather_triggered'
+          ) {
+            const createdInst = buildInstanceFromTask({
+              task: t,
+              household,
+              members: hhMembers,
+              instances: store.TaskInstances,
+              categoryPathMap: catPathMap,
+              todayStr: getTodayStr(household.timezone),
+              anchorDateStr: body.firstDueDate,
+              triggerSource: t.projectId ? 'project' : 'schedule',
+            });
+            createdInst.dueDate = body.firstDueDate;
+            if (hasEndOverride) {
+              createdInst.windowEndDate =
+                body.windowEndDate >= body.firstDueDate ? body.windowEndDate : body.firstDueDate;
+            } else if (t.cadenceMode !== 'flexible_window' || createdInst.windowEndDate < body.firstDueDate) {
+              createdInst.windowEndDate = body.firstDueDate;
+            }
+            store.TaskInstances.push(createdInst);
           }
           return t;
         };
