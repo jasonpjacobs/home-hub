@@ -176,17 +176,18 @@ export function HorizonsView({
         }
         return true;
       }
+      const deadline = i.windowEndDate || i.dueDate;
       if (horizon === 'weekly') {
-        return i.windowType === 'weekly' || i.windowType === 'biweekly' || i.dueDate <= weekLimit;
+        return deadline <= weekLimit;
       }
       if (horizon === 'monthly') {
-        return i.windowType === 'monthly' || (i.dueDate <= monthLimit && i.windowType !== 'yearly');
+        return deadline <= monthLimit;
       }
       if (horizon === 'quarterly') {
         return (
           i.windowType === 'quarterly' ||
           i.windowType === 'custom_months' ||
-          (i.dueDate <= quarterLimit && i.windowType !== 'daily')
+          (deadline <= quarterLimit && i.windowType !== 'daily')
         );
       }
       if (horizon === 'seasonal') {
@@ -207,7 +208,15 @@ export function HorizonsView({
         String(b.completedAt || b.dueDate).localeCompare(String(a.completedAt || a.dueDate)),
       );
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const aEnd = a.windowEndDate || a.dueDate || '';
+      const bEnd = b.windowEndDate || b.dueDate || '';
+      if (aEnd !== bEnd) return aEnd.localeCompare(bEnd);
+      const aStart = a.dueDate || '';
+      const bStart = b.dueDate || '';
+      if (aStart !== bStart) return aStart.localeCompare(bStart);
+      return a.taskTitle.localeCompare(b.taskTitle);
+    });
   }, [
     data.instances,
     data.user.id,
@@ -230,7 +239,7 @@ export function HorizonsView({
     { key: 'history', label: 'History & Ad-Hoc Log' },
   ];
 
-  // Group items by day / week / month / season for horizontal demarcation lines
+  // Group items by deadline (windowEndDate || dueDate) so flexible items sort by when they're due by
   const groupedSections = useMemo(() => {
     const todayWeekStart = getWeekStartISO(data.todayStr);
     const map = new Map<
@@ -254,7 +263,8 @@ export function HorizonsView({
     };
 
     for (const inst of items) {
-      const end = inst.windowEndDate || inst.dueDate;
+      const end = inst.windowEndDate || inst.dueDate || data.todayStr;
+      const isFlexibleSpan = Boolean(inst.windowEndDate && inst.windowEndDate !== inst.dueDate);
       const isOverdue =
         (inst.status === 'pending' || inst.status === 'started') && end < data.todayStr;
 
@@ -281,27 +291,26 @@ export function HorizonsView({
       }
 
       if (horizon === 'weekly') {
-        if (inst.windowType === 'weekly' || inst.windowType === 'biweekly') {
+        if (isFlexibleSpan) {
           addToGroup(
-            `wflex_${inst.windowEndDate || inst.dueDate}`,
-            `Flexible This Week · through ${inst.windowEndDate || inst.dueDate}`,
-            'current',
-            '9999-01-01',
+            `wflex_${end}`,
+            `Flexible · Due by ${formatDayLabel(end, data.todayStr)}`,
+            end === data.todayStr ? 'current' : 'normal',
+            `${end}_1`,
             inst,
           );
         } else {
-          const d = inst.dueDate || data.todayStr;
           addToGroup(
-            `day_${d}`,
-            formatDayLabel(d, data.todayStr),
-            d === data.todayStr ? 'current' : 'normal',
-            d,
+            `day_${end}`,
+            formatDayLabel(end, data.todayStr),
+            end === data.todayStr ? 'current' : 'normal',
+            `${end}_0`,
             inst,
           );
         }
       } else if (horizon === 'monthly') {
         if (inst.windowType === 'monthly') {
-          const ym = (inst.dueDate || data.todayStr).slice(0, 7);
+          const ym = end.slice(0, 7);
           addToGroup(
             `mflex_${ym}`,
             `Flexible ${formatMonthLabel(`${ym}-01`, data.todayStr)}`,
@@ -310,7 +319,7 @@ export function HorizonsView({
             inst,
           );
         } else {
-          const ws = getWeekStartISO(inst.dueDate || data.todayStr);
+          const ws = getWeekStartISO(end);
           addToGroup(
             `wk_${ws}`,
             formatWeekLabel(ws, todayWeekStart),
@@ -329,7 +338,7 @@ export function HorizonsView({
             inst,
           );
         } else {
-          const ym = (inst.windowEndDate || inst.dueDate || data.todayStr).slice(0, 7);
+          const ym = end.slice(0, 7);
           addToGroup(
             `smo_${ym}`,
             `Seasonal Window · Ends ${formatMonthLabel(`${ym}-01`, data.todayStr)}`,
@@ -339,9 +348,8 @@ export function HorizonsView({
           );
         }
       } else {
-        // Quarterly, Yearly, All Scheduled -> group cleanly by Month
-        const anchor = inst.dueDate || data.todayStr;
-        const ym = anchor.slice(0, 7);
+        // Quarterly, Yearly, All Scheduled -> group cleanly by Deadline Month
+        const ym = end.slice(0, 7);
         addToGroup(
           `mo_${ym}`,
           formatMonthLabel(`${ym}-01`, data.todayStr),
@@ -544,7 +552,10 @@ export function HorizonsView({
                                 <span className="tag warning">One-off</span>
                               ) : (
                                 <span className="tag primary">
-                                  <Repeat size={10} /> {inst.windowType}
+                                  <Repeat size={10} />{' '}
+                                  {inst.windowType === 'custom_months'
+                                    ? `every ${taskDef?.recurrenceInterval || 1} mo`
+                                    : inst.windowType}
                                 </span>
                               )}
                               {inst.visibility === 'private' && (
@@ -685,7 +696,10 @@ export function HorizonsView({
                             <span className="tag warning">One-off</span>
                           ) : (
                             <span className="tag primary">
-                              <Repeat size={10} /> {inst.windowType}
+                              <Repeat size={10} />{' '}
+                              {inst.windowType === 'custom_months'
+                                ? `every ${taskDef?.recurrenceInterval || 1} mo`
+                                : inst.windowType}
                             </span>
                           )}
                           {inst.visibility === 'private' && (
