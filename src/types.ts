@@ -266,6 +266,7 @@ export interface UndoState {
 
 export interface DashboardData {
   user: Member;
+  isSiteAdmin?: boolean;
   household: Household;
   todayStr: string;
   members: Member[];
@@ -316,4 +317,65 @@ export interface RebalancePlan {
   beforeLoads: LoadMetric[];
   afterLoads: LoadMetric[];
   changes: RebalanceChange[];
+}
+
+export interface SiteAdminDailyStat {
+  date: string;
+  pageViews: number;
+  demoLaunches: number;
+}
+
+export interface SiteAdminHousehold {
+  id: string;
+  name: string;
+  locationName: string;
+  timezone: string;
+  createdAt: string;
+  lastActivityAt: string;
+  isCurrentHousehold: boolean;
+  memberCount: number;
+  members: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: 'admin' | 'member';
+    memberGroup: string;
+    active: boolean;
+  }>;
+  taskCount: number;
+  projectCount: number;
+  completedCount: number;
+  openCount: number;
+  inviteCount: number;
+}
+
+export interface SiteAdminOverview {
+  analytics: {
+    totalPageViews: number;
+    todayPageViews: number;
+    last7DaysPageViews: number;
+    totalDemoLaunches: number;
+    todayDemoLaunches: number;
+    last7DaysDemoLaunches: number;
+    daily: SiteAdminDailyStat[];
+  };
+  totals: {
+    households: number;
+    members: number;
+    activeMembers: number;
+    tasks: number;
+    projects: number;
+    completedInstances: number;
+  };
+  config: {
+    storageMode: string;
+    storageLabel: string;
+    demoEnabled: boolean;
+    registrationCodeRequired: boolean;
+    emailConfigured: boolean;
+    ntfyConfigured: boolean;
+    webhookConfigured: boolean;
+    appUrl: string;
+  };
+  households: SiteAdminHousehold[];
 }

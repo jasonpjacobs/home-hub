@@ -2,14 +2,17 @@ import React, { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
+  BarChart3,
   Bell,
   Bot,
+  Building2,
   Check,
   CheckCheck,
   CloudRain,
   Copy,
   Download,
   Edit3,
+  Eye,
   KeyRound,
   Lock,
   Mail,
@@ -17,6 +20,7 @@ import {
   RefreshCw,
   Scale,
   Send,
+  ShieldCheck,
   Smartphone,
   Sparkles,
   Table2,
@@ -27,9 +31,22 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../api';
-import type { DashboardData, Member, RebalancePlan } from '../types';
+import type {
+  DashboardData,
+  Member,
+  RebalancePlan,
+  SiteAdminHousehold,
+  SiteAdminOverview,
+} from '../types';
 
-type SubTab = 'general' | 'members' | 'reminders' | 'sheets' | 'agent_api' | 'fairness';
+type SubTab =
+  | 'general'
+  | 'members'
+  | 'reminders'
+  | 'sheets'
+  | 'agent_api'
+  | 'fairness'
+  | 'site_admin';
 
 const AVATAR_COLORS = [
   '#2D6A4F',
@@ -168,6 +185,61 @@ export function SettingsView({ data, initialSubTab = 'general', onRefresh, onToa
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Site-wide admin console
+  const canViewSiteAdmin = Boolean(
+    data.isSiteAdmin && data.storage.shared.mode !== 'browser_demo',
+  );
+  const [adminOverview, setAdminOverview] = useState<SiteAdminOverview | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
+
+  async function loadAdminOverview() {
+    if (!canViewSiteAdmin) return;
+    setAdminLoading(true);
+    setAdminError(null);
+    try {
+      const overview = await api.adminOverview();
+      setAdminOverview(overview);
+    } catch (err: any) {
+      setAdminError(err.message || 'Could not load site administration overview.');
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (subTab === 'site_admin' && canViewSiteAdmin) {
+      void loadAdminOverview();
+    }
+  }, [subTab, canViewSiteAdmin]);
+
+  async function handleAdminDeleteHousehold(h: SiteAdminHousehold) {
+    if (h.isCurrentHousehold) {
+      onToast('You cannot delete your own currently signed-in household.');
+      return;
+    }
+    const typed = window.prompt(
+      `Permanently delete household "${h.name}" (${h.memberCount} member(s), ${h.taskCount} shared task(s), and all private data)?\n\nType "${h.name}" to confirm:`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== h.name.trim()) {
+      onToast('Deletion cancelled — household name did not match.');
+      return;
+    }
+    setWorking(true);
+    try {
+      const res = await api.adminDeleteHousehold(h.id);
+      await loadAdminOverview();
+      onToast(
+        `Deleted household "${res.deletedHouseholdName}" (${res.deletedMemberCount} member(s) removed).`,
+      );
+    } catch (err: any) {
+      onToast(err.message || 'Failed to delete household.');
+    } finally {
+      setWorking(false);
+    }
+  }
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -426,6 +498,16 @@ export function SettingsView({ data, initialSubTab = 'general', onRefresh, onToa
         {data.user.showEffortAndFairness && (
           <button type="button" className={`tab-btn ${subTab === 'fairness' ? 'active' : ''}`} onClick={() => setSubTab('fairness')}>
             Fairness &amp; Rebalance
+          </button>
+        )}
+        {canViewSiteAdmin && (
+          <button
+            type="button"
+            className={`tab-btn ${subTab === 'site_admin' ? 'active' : ''}`}
+            onClick={() => setSubTab('site_admin')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          >
+            <ShieldCheck size={14} /> Site Admin
           </button>
         )}
       </div>
@@ -1378,6 +1460,290 @@ curl -H "Authorization: Bearer hh_live_YOUR_KEY" \\
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* SITE-WIDE ADMINISTRATION (Restricted to SITE_ADMIN_EMAILS) */}
+      {subTab === 'site_admin' && canViewSiteAdmin && (
+        <div className="form-grid" style={{ gap: 20 }}>
+          <div className="card">
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ShieldCheck size={18} /> Site Administration
+                </h3>
+                <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  Host-only overview of page traffic, interactive demo launches, and signed-up
+                  households. Private personal tasks are never exposed here.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => void loadAdminOverview()}
+                disabled={adminLoading || working}
+              >
+                <RefreshCw size={14} /> {adminLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
+
+            {adminError && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  background: '#fff3f0',
+                  border: '1px solid #f0c2b8',
+                  color: 'var(--danger)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {adminError}
+              </div>
+            )}
+
+            {adminOverview && (
+              <div className="admin-config-pills" style={{ marginTop: 14 }}>
+                <span className="pill">{adminOverview.config.storageLabel}</span>
+                <span className={`pill ${adminOverview.config.registrationCodeRequired ? 'pill-info' : ''}`}>
+                  Signup Gate:{' '}
+                  {adminOverview.config.registrationCodeRequired ? 'Access Code Required' : 'Open'}
+                </span>
+                <span className="pill">
+                  Server Demo: {adminOverview.config.demoEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+                <span className={`pill ${adminOverview.config.emailConfigured ? 'pill-info' : ''}`}>
+                  Email (Resend): {adminOverview.config.emailConfigured ? 'Active' : 'Not Set'}
+                </span>
+                {adminOverview.config.ntfyConfigured && <span className="pill">ntfy Push: Active</span>}
+                {adminOverview.config.webhookConfigured && (
+                  <span className="pill">Webhook: Active</span>
+                )}
+                <span className="pill">{adminOverview.config.appUrl}</span>
+              </div>
+            )}
+          </div>
+
+          {adminLoading && !adminOverview && (
+            <div className="card" style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>
+              Loading site metrics and households…
+            </div>
+          )}
+
+          {adminOverview && (
+            <>
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <div className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Eye size={14} /> Page Views
+                  </div>
+                  <div className="stat-value">{adminOverview.analytics.totalPageViews}</div>
+                  <div style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                    Today: {adminOverview.analytics.todayPageViews} · 7d:{' '}
+                    {adminOverview.analytics.last7DaysPageViews}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Sparkles size={14} /> Demo Launches
+                  </div>
+                  <div className="stat-value">{adminOverview.analytics.totalDemoLaunches}</div>
+                  <div style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                    Today: {adminOverview.analytics.todayDemoLaunches} · 7d:{' '}
+                    {adminOverview.analytics.last7DaysDemoLaunches}
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Building2 size={14} /> Households
+                  </div>
+                  <div className="stat-value">{adminOverview.totals.households}</div>
+                  <div style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                    {adminOverview.totals.projects} projects · {adminOverview.totals.tasks} shared tasks
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Users size={14} /> Members
+                  </div>
+                  <div className="stat-value">{adminOverview.totals.members}</div>
+                  <div style={{ fontSize: '0.77rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                    {adminOverview.totals.activeMembers} active ·{' '}
+                    {adminOverview.totals.completedInstances} completed
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <BarChart3 size={17} /> Last 14 Days Activity
+                  </h3>
+                  <div style={{ display: 'flex', gap: 14, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <span
+                        style={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: 2,
+                          background: 'var(--primary)',
+                          display: 'inline-block',
+                        }}
+                      />
+                      Page Views
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <span
+                        style={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: 2,
+                          background: 'var(--accent)',
+                          display: 'inline-block',
+                        }}
+                      />
+                      Demo Launches
+                    </span>
+                  </div>
+                </div>
+                {(() => {
+                  const maxVal = Math.max(
+                    1,
+                    ...adminOverview.analytics.daily.map((d) => Math.max(d.pageViews, d.demoLaunches)),
+                  );
+                  return (
+                    <div className="admin-chart">
+                      {adminOverview.analytics.daily.map((day) => {
+                        const viewPct =
+                          day.pageViews > 0 ? Math.max(10, Math.round((day.pageViews / maxVal) * 100)) : 2;
+                        const demoPct =
+                          day.demoLaunches > 0
+                            ? Math.max(10, Math.round((day.demoLaunches / maxVal) * 100))
+                            : 2;
+                        const shortLabel = day.date.slice(5).replace('-', '/');
+                        return (
+                          <div
+                            key={day.date}
+                            className="admin-chart-col"
+                            title={`${day.date}: ${day.pageViews} page view(s), ${day.demoLaunches} demo launch(es)`}
+                          >
+                            <div className="admin-chart-bars">
+                              <div className="admin-bar views" style={{ height: `${viewPct}%` }} />
+                              <div className="admin-bar demos" style={{ height: `${demoPct}%` }} />
+                            </div>
+                            <span className="admin-chart-label">{shortLabel}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="card">
+                <div style={{ marginBottom: 14 }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Building2 size={17} /> Signed-Up Households ({adminOverview.households.length})
+                  </h3>
+                  <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                    Deleting a household permanently removes its shared tasks, projects, invites,
+                    API keys, members, and each member&apos;s isolated private storage scope.
+                  </p>
+                </div>
+
+                <div className="form-grid" style={{ gap: 12 }}>
+                  {adminOverview.households.map((h) => {
+                    const createdLabel = h.createdAt ? h.createdAt.slice(0, 10) : '—';
+                    const activeLabel = h.lastActivityAt ? h.lastActivityAt.slice(0, 10) : '—';
+                    return (
+                      <div key={h.id} className="admin-hh-card">
+                        <div className="admin-hh-header">
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <strong style={{ fontSize: '1rem' }}>{h.name}</strong>
+                              {h.isCurrentHousehold && (
+                                <span className="pill pill-info">Your Household</span>
+                              )}
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                                {h.id}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 3 }}>
+                              Created {createdLabel} · Last activity {activeLabel}
+                              {h.locationName ? ` · ${h.locationName}` : ''}
+                              {h.timezone ? ` (${h.timezone})` : ''}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            style={
+                              h.isCurrentHousehold
+                                ? { opacity: 0.45, cursor: 'not-allowed' }
+                                : {
+                                    color: 'var(--danger)',
+                                    borderColor: '#f1c7c0',
+                                    background: '#fff5f3',
+                                  }
+                            }
+                            disabled={h.isCurrentHousehold || working}
+                            title={
+                              h.isCurrentHousehold
+                                ? 'Cannot delete your own currently signed-in household.'
+                                : `Delete ${h.name}`
+                            }
+                            onClick={() => void handleAdminDeleteHousehold(h)}
+                          >
+                            <Trash2 size={13} /> Delete Household
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: '0.78rem' }}>
+                          <span className="pill">{h.memberCount} member(s)</span>
+                          <span className="pill">{h.taskCount} shared task(s)</span>
+                          <span className="pill">{h.openCount} open</span>
+                          <span className="pill">{h.completedCount} completed</span>
+                          <span className="pill">{h.projectCount} project(s)</span>
+                          {h.inviteCount > 0 && <span className="pill">{h.inviteCount} invite(s)</span>}
+                        </div>
+
+                        <div className="admin-hh-members">
+                          {h.members.map((m) => (
+                            <span key={m.id} className="admin-member-pill">
+                              <strong>{m.name}</strong>
+                              <span style={{ color: 'var(--text-muted)' }}>{m.email}</span>
+                              {m.role === 'admin' && (
+                                <span style={{ color: 'var(--primary)', fontWeight: 600 }}>admin</span>
+                              )}
+                              {!m.active && <span style={{ color: 'var(--danger)' }}>away</span>}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}

@@ -2380,6 +2380,106 @@ p {
   font-size: 0.84rem;
 }
 
+/* Site Admin Console */
+.admin-chart {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+  height: 124px;
+  padding: 10px 6px 4px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.admin-chart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 100%;
+  min-width: 0;
+}
+
+.admin-chart-bars {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  min-height: 0;
+}
+
+.admin-bar {
+  width: 44%;
+  max-width: 14px;
+  min-height: 2px;
+  border-radius: 4px 4px 1px 1px;
+  transition: height 0.2s ease;
+}
+
+.admin-bar.views {
+  background: var(--primary);
+}
+
+.admin-bar.demos {
+  background: var(--accent);
+}
+
+.admin-chart-label {
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.admin-hh-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-hh-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-hh-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-member-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.77rem;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.admin-config-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .mobile-nav {
   display: none;
 }

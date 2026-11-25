@@ -37,6 +37,8 @@ import type { DashboardData, DemoMember, StorageStatus, Task, TaskInstance } fro
 
 type ViewKey = 'cockpit' | 'horizons' | 'projects' | 'tasks' | 'activity' | 'settings';
 
+let trackedInitialPageView = false;
+
 export default function App() {
   const [booting, setBooting] = useState(true);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -49,7 +51,7 @@ export default function App() {
 
   const [view, setView] = useState<ViewKey>('cockpit');
   const [settingsSubTab, setSettingsSubTab] = useState<
-    'general' | 'members' | 'reminders' | 'sheets' | 'agent_api' | 'fairness'
+    'general' | 'members' | 'reminders' | 'sheets' | 'agent_api' | 'fairness' | 'site_admin'
   >('general');
   const [busy, setBusy] = useState(false);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -149,12 +151,17 @@ export default function App() {
   useEffect(() => {
     async function init() {
       try {
+        if (!trackedInitialPageView) {
+          trackedInitialPageView = true;
+          void api.trackVisit('page_view');
+        }
         const params = new URLSearchParams(window.location.search);
         const magic = params.get('magic');
         const invite = params.get('invite');
         const wantsDemo = params.get('demo') === '1' || params.get('demo') === 'true';
         if (invite) setInitialInviteCode(invite);
         if (wantsDemo || isLocalDemoMode()) {
+          if (wantsDemo) void api.trackVisit('demo_launch');
           setLocalDemoMode(true);
           setLocalDemo(true);
           await loadDashboard();
@@ -204,6 +211,7 @@ export default function App() {
   }
 
   async function handleStartBrowserDemo() {
+    void api.trackVisit('demo_launch');
     setLocalDemoMode(true);
     setLocalDemo(true);
     await loadDashboard();

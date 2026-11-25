@@ -227,6 +227,19 @@ function describeUndoAction(method, normalizedPath, responseData, beforeSnap) {
   return 'Last change';
 }
 
+function isSiteAdminMember(member, env = process.env) {
+  if (!member?.email) return false;
+  const configured = String(env.SITE_ADMIN_EMAILS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (configured.length > 0) {
+    return configured.includes(member.email.toLowerCase());
+  }
+  // In local non-production dev only, let household admins preview the Site Admin tab
+  return env.NODE_ENV !== 'production' && member.role === 'admin';
+}
+
 export function createApiHandler(db = new SheetDatabase()) {
   const historyByMember = new Map();
   const authHitsByIp = new Map();
@@ -904,6 +917,16 @@ export function createApiHandler(db = new SheetDatabase()) {
         return sendJson(res, 200, buildOpenApiSpec(getAppUrl(req)));
       }
 
+      // Lightweight privacy-friendly page view & demo launch beacon
+      if (method === 'POST' && pathname === '/api/analytics/visit') {
+        const body = await readJsonBody(req);
+        const kind = body.kind === 'demo_launch' ? 'demo_launch' : 'page_view';
+        if (typeof db.recordSiteEvent === 'function') {
+          await db.recordSiteEvent(kind, getTodayStr('America/Los_Angeles')).catch(() => {});
+        }
+        return sendJson(res, 200, { ok: true });
+      }
+
       if (method === 'GET' && pathname === '/api/auth/me') {
         const data = await db.getAll();
         const session = getSessionFromRequest(req);
@@ -956,6 +979,7 @@ export function createApiHandler(db = new SheetDatabase()) {
 
         return sendJson(res, 200, {
           user: sanitizeSafeMember(member),
+          isSiteAdmin: isSiteAdminMember(member),
           household,
           demoMembers,
           demoEnabled,
@@ -1483,6 +1507,7 @@ export function createApiHandler(db = new SheetDatabase()) {
 
         return sendJson(res, 200, {
           user: sanitizeSafeMember(member),
+          isSiteAdmin: isSiteAdminMember(member),
           household,
           todayStr,
           members: hhMembers.map(sanitizeSafeMember),
@@ -2836,6 +2861,160 @@ export function createApiHandler(db = new SheetDatabase()) {
           }
         });
         return sendJson(res, 200, { ok: true });
+      }
+
+      // -----------------------------------------------------------------------
+      // Site-Wide Administration (Strictly locked to SITE_ADMIN_EMAILS)
+      // -----------------------------------------------------------------------
+      if (method === 'GET' && normalizedPath === '/api/admin/overview') {
+        if (!isSiteAdminMember(member)) {
+          return sendJson(res, 403, { error: 'Site administrator access required.' });
+        }
+        const data = await db.getAll();
+        const todayStr = getTodayStr(household.timezone || 'America/Los_Angeles');
+        const sevenDaysAgo = addDays(todayStr, -6);
+
+        const rawDaily =
+          typeof db.getSiteAnalytics === 'function' ? await db.getSiteAnalytics() : [];
+        const byDay = new Map(rawDaily.map((d) => [d.date, d]));
+        const last14Days = [];
+        for (let offset = -13; offset <= 0; offset++) {
+          const d = addDays(todayStr, offset);
+          const row = byDay.get(d);
+          last14Days.push({
+            date: d,
+            pageViews: row?.pageViews || 0,
+            demoLaunches: row?.demoLaunches || 0,
+          });
+        }
+
+        const totalPageViews = rawDaily.reduce((s, r) => s + (r.pageViews || 0), 0);
+        const totalDemoLaunches = rawDaily.reduce((s, r) => s + (r.demoLaunches || 0), 0);
+        const todayRow = byDay.get(todayStr);
+        const last7DaysPageViews = rawDaily
+          .filter((r) => r.date >= sevenDaysAgo)
+          .reduce((s, r) => s + (r.pageViews || 0), 0);
+        const last7DaysDemoLaunches = rawDaily
+          .filter((r) => r.date >= sevenDaysAgo)
+          .reduce((s, r) => s + (r.demoLaunches || 0), 0);
+
+        const households = data.Households.map((hh) => {
+          const hhMembers = data.Members.filter((m) => m.householdId === hh.id);
+          const hhTasks = data.Tasks.filter((t) => t.householdId === hh.id && t.visibility !== 'private');
+          const hhProjects = data.Projects.filter((p) => p.householdId === hh.id && p.visibility !== 'private');
+          const hhInsts = data.TaskInstances.filter((i) => i.householdId === hh.id && i.visibility !== 'private');
+          const hhInvites = data.Invites.filter((i) => i.householdId === hh.id);
+          const completedCount = hhInsts.filter((i) => i.status === 'completed').length;
+          const openCount = hhInsts.filter((i) => isOpenStatus(i.status)).length;
+          const timestamps = [
+            hh.createdAt,
+            ...hhMembers.map((m) => m.createdAt),
+            ...hhTasks.map((t) => t.createdAt),
+            ...hhInsts.map((i) => i.completedAt || i.createdAt),
+          ]
+            .filter(Boolean)
+            .sort();
+          const lastActivityAt = timestamps[timestamps.length - 1] || hh.createdAt || '';
+
+          return {
+            id: hh.id,
+            name: hh.name,
+            locationName: hh.locationName || '',
+            timezone: hh.timezone || '',
+            createdAt: hh.createdAt || '',
+            lastActivityAt,
+            isCurrentHousehold: hh.id === hhId,
+            memberCount: hhMembers.length,
+            members: hhMembers.map((m) => ({
+              id: m.id,
+              name: m.name,
+              email: m.email,
+              role: m.role,
+              memberGroup: m.memberGroup || 'partner',
+              active: m.active !== false,
+            })),
+            taskCount: hhTasks.length,
+            projectCount: hhProjects.length,
+            completedCount,
+            openCount,
+            inviteCount: hhInvites.length,
+          };
+        }).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+
+        const status = db.getStatus();
+        return sendJson(res, 200, {
+          analytics: {
+            totalPageViews,
+            todayPageViews: todayRow?.pageViews || 0,
+            last7DaysPageViews,
+            totalDemoLaunches,
+            todayDemoLaunches: todayRow?.demoLaunches || 0,
+            last7DaysDemoLaunches,
+            daily: last14Days,
+          },
+          totals: {
+            households: households.length,
+            members: data.Members.length,
+            activeMembers: data.Members.filter((m) => m.active !== false).length,
+            tasks: data.Tasks.filter((t) => t.visibility !== 'private').length,
+            projects: data.Projects.filter((p) => p.visibility !== 'private').length,
+            completedInstances: data.TaskInstances.filter(
+              (i) => i.visibility !== 'private' && i.status === 'completed',
+            ).length,
+          },
+          config: {
+            storageMode: status.mode,
+            storageLabel: status.label,
+            demoEnabled: isDemoEnabled(process.env),
+            registrationCodeRequired: Boolean((process.env.REGISTRATION_CODE || '').trim()),
+            emailConfigured: Boolean(process.env.RESEND_API_KEY),
+            ntfyConfigured: Boolean(process.env.NTFY_TOPIC_URL),
+            webhookConfigured: Boolean(process.env.REMINDER_WEBHOOK_URL),
+            appUrl: getAppUrl(req),
+          },
+          households,
+        });
+      }
+
+      if (method === 'DELETE' && normalizedPath.startsWith('/api/admin/households/')) {
+        if (!isSiteAdminMember(member)) {
+          return sendJson(res, 403, { error: 'Site administrator access required.' });
+        }
+        const targetHhId = decodeURIComponent(normalizedPath.slice('/api/admin/households/'.length));
+        if (!targetHhId) return sendJson(res, 400, { error: 'Missing household ID.' });
+        if (targetHhId === hhId) {
+          return sendJson(res, 400, {
+            error: 'Cannot delete your own currently signed-in household from the admin panel.',
+          });
+        }
+
+        const deleted = await db.mutate((d) => {
+          const targetHh = d.Households.find((h) => h.id === targetHhId);
+          if (!targetHh) throw Object.assign(new Error('Household not found.'), { status: 404 });
+          const targetMemberIds = d.Members.filter((m) => m.householdId === targetHhId).map((m) => m.id);
+          d.Households = d.Households.filter((h) => h.id !== targetHhId);
+          d.Members = d.Members.filter((m) => m.householdId !== targetHhId);
+          d.Invites = d.Invites.filter((i) => i.householdId !== targetHhId);
+          d.ApiKeys = d.ApiKeys.filter((k) => k.householdId !== targetHhId);
+          d.Categories = d.Categories.filter((c) => c.householdId !== targetHhId);
+          d.Projects = d.Projects.filter((p) => p.householdId !== targetHhId);
+          d.Tasks = d.Tasks.filter((t) => t.householdId !== targetHhId);
+          d.TaskInstances = d.TaskInstances.filter((i) => i.householdId !== targetHhId);
+          d.Notifications = d.Notifications.filter((n) => n.householdId !== targetHhId);
+          return { name: targetHh.name, memberIds: targetMemberIds };
+        });
+
+        if (typeof db.deletePrivateScope === 'function') {
+          for (const mid of deleted.memberIds) {
+            await db.deletePrivateScope(mid).catch(() => {});
+          }
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          deletedHouseholdName: deleted.name,
+          deletedMemberCount: deleted.memberIds.length,
+        });
       }
 
       // Sheet Sync, Init, Export (Shared & Personal!)

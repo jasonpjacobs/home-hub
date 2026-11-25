@@ -9,6 +9,7 @@ import type {
   Member,
   Project,
   RebalancePlan,
+  SiteAdminOverview,
   StorageStatus,
   Task,
   TaskInstance,
@@ -38,6 +39,7 @@ const serverApi = {
   me: () =>
     request<{
       user: Member | null;
+      isSiteAdmin?: boolean;
       household: Household | null;
       demoMembers: DemoMember[];
       demoEnabled?: boolean;
@@ -360,6 +362,20 @@ const serverApi = {
     request<{ ok: boolean; restoredLabel: string; undo: DashboardData['undo'] }>('/api/redo', {
       method: 'POST',
     }),
+
+  trackVisit: (kind: 'page_view' | 'demo_launch' = 'page_view') =>
+    request<{ ok: boolean }>('/api/analytics/visit', {
+      method: 'POST',
+      body: JSON.stringify({ kind }),
+    }).catch(() => ({ ok: false })),
+
+  adminOverview: () => request<SiteAdminOverview>('/api/admin/overview'),
+
+  adminDeleteHousehold: (id: string) =>
+    request<{ ok: boolean; deletedHouseholdName: string; deletedMemberCount: number }>(
+      `/api/admin/households/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    ),
 };
 
 type ApiClient = typeof serverApi;

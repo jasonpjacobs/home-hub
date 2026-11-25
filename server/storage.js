@@ -13,6 +13,7 @@ import {
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const SHARED_LOCAL_FILE = path.join(DATA_DIR, 'home-hub-v2-shared.json');
+const ANALYTICS_LOCAL_FILE = path.join(DATA_DIR, 'home-hub-site-analytics.json');
 
 function base64UrlEncode(input) {
   return Buffer.from(input)
@@ -755,6 +756,96 @@ export class SheetDatabase {
       throw err;
     } finally {
       client.release();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Site-Wide Admin Helpers (Analytics Counters & Private Scope Cleanup)
+  // ---------------------------------------------------------------------------
+  async recordSiteEvent(kind = 'page_view', dateStr) {
+    const day =
+      dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+        ? dateStr
+        : new Date().toISOString().slice(0, 10);
+    const isDemo = kind === 'demo_launch';
+
+    if (this.getMode() === 'postgres') {
+      const pool = await this.#getPgPool();
+      const pvInc = isDemo ? 0 : 1;
+      const demoInc = isDemo ? 1 : 0;
+      await pool.query(
+        `INSERT INTO home_hub_records (scope, tab_name, record_id, household_id, data, updated_at)
+         VALUES ('site_analytics', 'DailyStats', $1, '', jsonb_build_object('date', $1::text, 'pageViews', $2::int, 'demoLaunches', $3::int), NOW())
+         ON CONFLICT (scope, tab_name, record_id)
+         DO UPDATE SET data = jsonb_build_object(
+           'date', $1::text,
+           'pageViews', COALESCE((home_hub_records.data->>'pageViews')::int, 0) + $2::int,
+           'demoLaunches', COALESCE((home_hub_records.data->>'demoLaunches')::int, 0) + $3::int
+         ), updated_at = NOW()`,
+        [day, pvInc, demoInc],
+      );
+      return;
+    }
+
+    // Local JSON mirror fallback
+    try {
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      let stats = {};
+      try {
+        stats = JSON.parse(await fs.readFile(ANALYTICS_LOCAL_FILE, 'utf8'));
+      } catch {
+        stats = {};
+      }
+      const cur = stats[day] || { date: day, pageViews: 0, demoLaunches: 0 };
+      if (isDemo) cur.demoLaunches += 1;
+      else cur.pageViews += 1;
+      stats[day] = cur;
+      await fs.writeFile(ANALYTICS_LOCAL_FILE, JSON.stringify(stats, null, 2), 'utf8');
+    } catch {
+      // Non-fatal on read-only FS
+    }
+  }
+
+  async getSiteAnalytics() {
+    if (this.getMode() === 'postgres') {
+      const pool = await this.#getPgPool();
+      const res = await pool.query(
+        `SELECT data FROM home_hub_records
+         WHERE scope = 'site_analytics' AND tab_name = 'DailyStats'
+         ORDER BY record_id ASC`,
+      );
+      return res.rows.map((r) => ({
+        date: String(r.data?.date || ''),
+        pageViews: Number(r.data?.pageViews) || 0,
+        demoLaunches: Number(r.data?.demoLaunches) || 0,
+      }));
+    }
+    try {
+      const stats = JSON.parse(await fs.readFile(ANALYTICS_LOCAL_FILE, 'utf8'));
+      return Object.values(stats)
+        .map((r) => ({
+          date: String(r.date || ''),
+          pageViews: Number(r.pageViews) || 0,
+          demoLaunches: Number(r.demoLaunches) || 0,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    } catch {
+      return [];
+    }
+  }
+
+  async deletePrivateScope(memberId) {
+    if (!memberId) return;
+    this.privateCaches.delete(memberId);
+    if (this.getMode() === 'postgres') {
+      const pool = await this.#getPgPool();
+      await pool.query('DELETE FROM home_hub_records WHERE scope = $1', [`private:${memberId}`]);
+      return;
+    }
+    try {
+      await fs.unlink(this.#privateFilePath(memberId));
+    } catch {
+      // Ignore if file doesn't exist
     }
   }
 }
