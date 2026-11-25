@@ -420,7 +420,7 @@ export default function App() {
       <div className="auth-page">
         <div className="card" style={{ padding: '28px 36px', textAlign: 'center' }}>
           <h2 style={{ marginBottom: 6 }}>Home Hub</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Loading your federated sheets...</p>
+          <p style={{ color: 'var(--text-muted)' }}>Loading data...</p>
         </div>
       </div>
     );
@@ -631,7 +631,7 @@ export default function App() {
                   ? 'PostgreSQL Connected'
                   : dashboard.storage.shared.connected
                     ? 'Sheets Connected'
-                    : 'Federated Local Mirror'}
+                    : 'Local Storage'}
             </span>
           </button>
 

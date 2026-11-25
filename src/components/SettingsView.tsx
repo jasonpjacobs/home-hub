@@ -471,9 +471,9 @@ export function SettingsView({ data, initialSubTab = 'general', onRefresh, onToa
     <div>
       <div className="page-header">
         <div>
-          <h1>Settings, Sheets &amp; Integrations</h1>
+          <h1>Settings &amp; Integrations</h1>
           <p className="page-subtitle">
-            Personal preferences, 10-day weather triggers, federated Google Sheets, reminders, and
+            Personal preferences, 10-day weather triggers, data storage &amp; Google Sheets, reminders, and
             the AI Agent API.
           </p>
         </div>
@@ -490,7 +490,7 @@ export function SettingsView({ data, initialSubTab = 'general', onRefresh, onToa
           Reminders ({data.notifications.filter((n) => n.memberId === data.user.id && !n.readAt).length})
         </button>
         <button type="button" className={`tab-btn ${subTab === 'sheets' ? 'active' : ''}`} onClick={() => setSubTab('sheets')}>
-          Federated Google Sheets
+          Storage &amp; Google Sheets
         </button>
         <button type="button" className={`tab-btn ${subTab === 'agent_api' ? 'active' : ''}`} onClick={() => setSubTab('agent_api')}>
           AI Agent API &amp; MCP
