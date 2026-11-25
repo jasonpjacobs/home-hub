@@ -1,0 +1,32 @@
+{
+  "name": "home-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-household task, habit, project, and weather-smart home planner backed by PostgreSQL or Google Sheets.",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c green,cyan \"node --watch server/index.js\" \"vite\"",
+    "dev:api": "node --watch server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production node server/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "lucide-react": "^0.511.0",
+    "pg": "^8.23.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

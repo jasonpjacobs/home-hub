@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: home-hub
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ENABLE_DEMO
+        value: 'false'
+      - key: REGISTRATION_CODE
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_APPS_SCRIPT_URL
+        sync: false
+      - key: GOOGLE_APPS_SCRIPT_TOKEN
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: NTFY_TOPIC_URL
+        sync: false
+      - key: REMINDER_WEBHOOK_URL
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true

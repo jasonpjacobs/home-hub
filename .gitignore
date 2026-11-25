@@ -1,0 +1,18 @@
+# Dependencies & build output
+node_modules/
+dist/
+.vercel/
+
+# Local data & secrets (never commit personal household data or credentials)
+data/
+.env
+.env.local
+.env.*.local
+
+# OS & editor files
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.vercel
+.env*

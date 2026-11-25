@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: homehub
+      POSTGRES_PASSWORD: homehub_change_me
+      POSTGRES_DB: homehub
+    volumes:
+      - homehub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U homehub']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3001:3001'
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      APP_URL: ${APP_URL:-http://localhost:3001}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-to-a-long-random-secret}
+      DATABASE_URL: postgres://homehub:homehub_change_me@db:5432/homehub
+      ENABLE_DEMO: ${ENABLE_DEMO:-false}
+      REGISTRATION_CODE: ${REGISTRATION_CODE:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Home Hub <onboarding@resend.dev>}
+      NTFY_TOPIC_URL: ${NTFY_TOPIC_URL:-}
+      REMINDER_WEBHOOK_URL: ${REMINDER_WEBHOOK_URL:-}
+      CRON_SECRET: ${CRON_SECRET:-}
+
+volumes:
+  homehub_pgdata:
