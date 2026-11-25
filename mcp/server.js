@@ -169,6 +169,82 @@ const TOOLS = [
     description: 'Fetch 10-day household weather forecast and active urgent (1-3d) & heads-up (4-10d) weather alerts.',
     inputSchema: { type: 'object', properties: {} },
   },
+  {
+    name: 'list_categories',
+    description: 'List all household (and permitted private) categories and subcategories with their full breadcrumb paths.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'create_category',
+    description: 'Create a top-level category or subcategory (pass parentCategoryId to nest under an existing category).',
+    inputSchema: {
+      type: 'object',
+      required: ['name'],
+      properties: {
+        name: { type: 'string' },
+        parentCategoryId: { type: 'string' },
+        visibility: { type: 'string', enum: ['household', 'private'] },
+      },
+    },
+  },
+  {
+    name: 'update_task',
+    description: 'Update an existing task (title, description, categoryId, recurrence, overduePolicy, assignmentMode, isFavorite, active, etc.).',
+    inputSchema: {
+      type: 'object',
+      required: ['taskId'],
+      properties: {
+        taskId: { type: 'string' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        categoryId: { type: 'string' },
+        isFavorite: { type: 'boolean' },
+        active: { type: 'boolean' },
+        cadenceMode: { type: 'string', enum: ['strict_date', 'flexible_window', 'weather_triggered'] },
+        recurrenceType: { type: 'string' },
+        recurrenceDays: { type: 'string' },
+        targetSeason: { type: 'string' },
+        weatherTrigger: { type: 'string' },
+        overduePolicy: { type: 'string', enum: ['carry_over', 'auto_skip', 'roll_forward'] },
+        assignmentMode: { type: 'string', enum: ['fixed', 'open_pool', 'round_robin', 'auto_balanced'] },
+        fixedMemberId: { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'move_tasks',
+    description: 'Batch-move or reparent one or more tasks to a different categoryId, parentTaskId, or stepOrder (also refreshes pending instance category paths).',
+    inputSchema: {
+      type: 'object',
+      required: ['updates'],
+      properties: {
+        updates: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['id'],
+            properties: {
+              id: { type: 'string' },
+              categoryId: { type: 'string' },
+              parentTaskId: { type: 'string' },
+              stepOrder: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'delete_task',
+    description: 'Delete a task template and its open instances.',
+    inputSchema: {
+      type: 'object',
+      required: ['taskId'],
+      properties: {
+        taskId: { type: 'string' },
+      },
+    },
+  },
 ];
 
 async function apiCall(method, path, body) {
@@ -221,6 +297,18 @@ async function callTool(name, args = {}) {
       });
     case 'get_weather_forecast':
       return apiCall('GET', '/api/v1/weather');
+    case 'list_categories':
+      return apiCall('GET', '/api/v1/categories');
+    case 'create_category':
+      return apiCall('POST', '/api/v1/categories', args);
+    case 'update_task': {
+      const { taskId, ...patch } = args;
+      return apiCall('PATCH', `/api/v1/tasks/${encodeURIComponent(taskId)}`, patch);
+    }
+    case 'move_tasks':
+      return apiCall('POST', '/api/v1/tasks/reorder', { updates: args.updates || [] });
+    case 'delete_task':
+      return apiCall('DELETE', `/api/v1/tasks/${encodeURIComponent(args.taskId)}`);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
