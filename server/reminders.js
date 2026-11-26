@@ -103,9 +103,17 @@ export function buildDailyDigestNotifications({
   appUrl = 'http://localhost:3001',
 }) {
   const activeMembers = members.filter((m) => m.active !== false && m.notifyEmail !== false);
-  const soonDateStr = addDays(todayStr, 3);
+  const weekLimit = addDays(todayStr, 7);
+  const monthLimit = addDays(todayStr, 31);
   const now = new Date().toISOString();
   const created = [];
+
+  const byDeadline = (a, b) => {
+    const aEnd = a.windowEndDate || a.dueDate || '';
+    const bEnd = b.windowEndDate || b.dueDate || '';
+    if (aEnd !== bEnd) return aEnd.localeCompare(bEnd);
+    return (a.taskTitle || '').localeCompare(b.taskTitle || '');
+  };
 
   for (const member of activeMembers) {
     const showEffort = Boolean(member.showEffortAndFairness);
@@ -113,61 +121,87 @@ export function buildDailyDigestNotifications({
       (i) =>
         isOpenStatus(i.status) &&
         i.status !== 'on_hold' &&
+        i.status !== 'gated' &&
         i.visibility !== 'private' &&
         (i.assigneeId === member.id || (!i.assigneeId && isMemberEligibleForInstance(i, member.id))),
     );
 
-    const overdue = mine.filter((i) => (i.windowEndDate || i.dueDate) < todayStr);
-    const dueToday = mine.filter(
-      (i) => i.dueDate <= todayStr && (i.windowEndDate || i.dueDate) >= todayStr && i.windowType === 'daily',
-    );
-    const openRadar = mine.filter((i) => !i.assigneeId && i.assignmentMode === 'open_pool');
-    const upcoming = mine.filter((i) => i.dueDate > todayStr && i.dueDate <= soonDateStr && i.assigneeId === member.id);
+    const overdue = mine
+      .filter((i) => (i.windowEndDate || i.dueDate) < todayStr)
+      .sort(byDeadline);
+
+    const dueToday = mine
+      .filter((i) => {
+        const end = i.windowEndDate || i.dueDate;
+        return end === todayStr;
+      })
+      .sort(byDeadline);
+
+    const thisWeek = mine
+      .filter((i) => {
+        const end = i.windowEndDate || i.dueDate;
+        return end > todayStr && end <= weekLimit;
+      })
+      .sort(byDeadline);
+
+    const thisMonth = mine
+      .filter((i) => {
+        const end = i.windowEndDate || i.dueDate;
+        return end > weekLimit && end <= monthLimit;
+      })
+      .sort(byDeadline);
 
     const urgentWeather = weatherAlerts.filter((w) => w.urgency === 'urgent' && w.visibility !== 'private');
     const headsUpWeather = weatherAlerts.filter((w) => w.urgency === 'heads_up' && w.visibility !== 'private');
 
-    const lines = [];
+    const formatItem = (a, { includeDeadline = true } = {}) => {
+      const end = a.windowEndDate || a.dueDate;
+      const isFlexible = Boolean(a.windowEndDate && a.windowEndDate !== a.dueDate);
+      const who = a.assigneeId ? a.assigneeName?.split(' ')[0] || '' : 'Anyone';
+      const meta = [];
+      if (a.categoryPath) meta.push(a.categoryPath);
+      if (showEffort && a.effort) meta.push(`${a.effort} ${a.effort === 1 ? 'pt' : 'pts'}`);
+      const details = [];
+      if (includeDeadline && end) details.push(isFlexible ? `due by ${end}` : `due ${end}`);
+      if (who) details.push(who);
+      const bracket = meta.length > 0 ? ` [${meta.join(', ')}]` : '';
+      const paren = details.length > 0 ? ` (${details.join(' · ')})` : '';
+      return `• ${a.taskTitle}${bracket}${paren}`;
+    };
+
+    const sections = [];
     if (urgentWeather.length > 0) {
-      lines.push(
-        `URGENT Weather (1-3 days): ${urgentWeather.map((w) => `${w.taskTitle} — ${w.summary}`).join('; ')}`,
+      sections.push(
+        `URGENT Weather (1–3 days):\n${urgentWeather.map((w) => `• ${w.taskTitle} — ${w.summary}`).join('\n')}`,
       );
     }
     if (headsUpWeather.length > 0) {
-      lines.push(
-        `Weather Heads-Up (4-10 days): ${headsUpWeather.map((w) => `${w.taskTitle} — ${w.summary}`).join('; ')}`,
+      sections.push(
+        `Weather Heads-Up (4–10 days):\n${headsUpWeather.map((w) => `• ${w.taskTitle} — ${w.summary}`).join('\n')}`,
       );
     }
     if (overdue.length > 0) {
-      lines.push(
-        `Overdue (${overdue.length}): ${overdue.map((a) => `${a.taskTitle} (due ${a.dueDate})`).join('; ')}`,
-      );
+      sections.push(`Overdue (${overdue.length}):\n${overdue.map((a) => formatItem(a)).join('\n')}`);
     }
     if (dueToday.length > 0) {
-      lines.push(
-        `Due Today (${dueToday.length}): ${dueToday
-          .map((a) =>
-            showEffort
-              ? `${a.taskTitle} [${a.categoryPath}, ${a.effort} ${a.effort === 1 ? 'pt' : 'pts'}]`
-              : `${a.taskTitle} [${a.categoryPath}]`,
-          )
-          .join('; ')}`,
+      sections.push(
+        `Today (${dueToday.length}):\n${dueToday.map((a) => formatItem(a, { includeDeadline: false })).join('\n')}`,
       );
     }
-    if (openRadar.length > 0) {
-      lines.push(
-        `Open for Anyone (${openRadar.length}): ${openRadar.slice(0, 4).map((a) => a.taskTitle).join(', ')}`,
+    if (thisWeek.length > 0) {
+      sections.push(
+        `This Week (${thisWeek.length}):\n${thisWeek.map((a) => formatItem(a)).join('\n')}`,
       );
     }
-    if (upcoming.length > 0) {
-      lines.push(
-        `Next 3 Days (${upcoming.length}): ${upcoming.map((a) => `${a.taskTitle} (${a.dueDate})`).join('; ')}`,
+    if (thisMonth.length > 0) {
+      sections.push(
+        `This Month (${thisMonth.length}):\n${thisMonth.map((a) => formatItem(a)).join('\n')}`,
       );
     }
-    if (lines.length === 0) {
-      lines.push('All caught up! Nothing urgent on your Daily Cockpit today.');
+    if (sections.length === 0) {
+      sections.push('All caught up! Nothing due today, this week, or this month.');
     }
-    lines.push(`Open Daily Cockpit: ${appUrl}`);
+    sections.push(`Open Daily Cockpit: ${appUrl}`);
 
     created.push({
       id: makeId('ntf'),
@@ -176,7 +210,7 @@ export function buildDailyDigestNotifications({
       memberEmail: member.email,
       type: 'daily_digest',
       subject: `Daily Cockpit Digest (${todayStr}) — ${household.name}`,
-      body: lines.join('\n'),
+      body: sections.join('\n\n'),
       channel: 'in_app',
       deliveryStatus: 'queued',
       readAt: '',

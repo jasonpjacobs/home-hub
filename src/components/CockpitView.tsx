@@ -63,6 +63,18 @@ interface Props {
   onOpenProjects: () => void;
 }
 
+function addDaysStr(dateStr: string, days: number) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days, 12));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+function diffDaysStr(aStr: string, bStr: string) {
+  const [ay, am, ad] = aStr.split('-').map(Number);
+  const [by, bm, bd] = bStr.split('-').map(Number);
+  return Math.round((Date.UTC(ay, am - 1, ad, 12) - Date.UTC(by, bm - 1, bd, 12)) / 86_400_000);
+}
+
 function isEligibleForMe(inst: TaskInstance, userId: string) {
   if (inst.visibility === 'private') return inst.ownerId === userId;
   if (inst.assigneeId) return inst.assigneeId === userId;
@@ -155,20 +167,24 @@ export function CockpitView({
       return isMine && isToday;
     });
 
-    const openList = open.filter((i) => {
-      if (habitIds.has(i.taskId)) return false;
-      if (trackedIds.has(i.id)) return false;
-      if (i.assigneeId) return false;
-      if (i.assignmentMode !== 'open_pool') return false;
-      if (!isEligibleForMe(i, data.user.id)) return false;
-      if ((i.windowEndDate || i.dueDate) < data.todayStr) return false;
-      return (
-        i.triggerSource === 'weather' ||
-        i.windowType === 'daily' ||
-        i.windowType === 'weekly' ||
-        i.dueDate <= data.todayStr
+    const radarHorizon = addDaysStr(data.todayStr, 14);
+    const openList = open
+      .filter((i) => {
+        if (habitIds.has(i.taskId)) return false;
+        if (trackedIds.has(i.id)) return false;
+        if (i.assigneeId) return false;
+        if (i.assignmentMode !== 'open_pool') return false;
+        if (!isEligibleForMe(i, data.user.id)) return false;
+        const end = i.windowEndDate || i.dueDate;
+        if (end < data.todayStr) return false;
+        if (i.triggerSource === 'weather') return true;
+        if (end <= radarHorizon) return true;
+        const spanDays = i.dueDate && end ? diffDaysStr(end, i.dueDate) : 0;
+        return i.dueDate <= data.todayStr && spanDays <= 31;
+      })
+      .sort((a, b) =>
+        (a.windowEndDate || a.dueDate || '').localeCompare(b.windowEndDate || b.dueDate || ''),
       );
-    });
 
     const favs = data.tasks.filter(
       (t) =>

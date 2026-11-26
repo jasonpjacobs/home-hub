@@ -85,6 +85,7 @@ export function getWindowBounds(
   anchorDateStr,
   targetSeason = '',
   recurrenceInterval = 1,
+  targetMonth = 0,
 ) {
   const dt = parseDateStr(anchorDateStr);
   const y = dt.getUTCFullYear();
@@ -143,6 +144,20 @@ export function getWindowBounds(
   }
 
   if (recurrenceType === 'yearly') {
+    const tm = Number(targetMonth) || 0;
+    if (tm >= 1 && tm <= 12) {
+      let start = new Date(Date.UTC(y, tm - 1, 1, 12));
+      let end = new Date(Date.UTC(y, tm, 0, 12));
+      if (formatDateUTC(end) < anchorDateStr) {
+        start = new Date(Date.UTC(y + 1, tm - 1, 1, 12));
+        end = new Date(Date.UTC(y + 1, tm, 0, 12));
+      }
+      return {
+        windowType: 'yearly',
+        dueDate: formatDateUTC(start),
+        windowEndDate: formatDateUTC(end),
+      };
+    }
     return {
       windowType: 'yearly',
       dueDate: `${y}-01-01`,
@@ -205,6 +220,15 @@ export function computeNextDueDate(task, fromDateStr, { inclusive = false } = {}
   }
 
   if (type === 'yearly') {
+    const tm = Number(task.targetMonth) || 0;
+    if (tm >= 1 && tm <= 12) {
+      if (inclusive) {
+        return getWindowBounds('yearly', fromDateStr, '', 1, tm).dueDate;
+      }
+      const base = parseDateStr(fromDateStr);
+      const nextYear = base.getUTCFullYear() + 1;
+      return formatDateUTC(new Date(Date.UTC(nextYear, tm - 1, 1, 12)));
+    }
     const base = parseDateStr(fromDateStr);
     const y = base.getUTCFullYear() + (inclusive ? 0 : 1);
     return `${y}-01-01`;
@@ -470,6 +494,7 @@ export function buildInstanceFromTask({
       anchorDateStr,
       task.targetSeason,
       task.recurrenceInterval,
+      task.targetMonth,
     );
     windowType = bounds.windowType;
     dueDate = bounds.dueDate;

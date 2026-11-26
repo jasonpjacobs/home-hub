@@ -96,6 +96,7 @@ export interface Task {
   recurrenceInterval: number;
   recurrenceDays: string;
   targetSeason: '' | 'spring' | 'summer' | 'fall' | 'winter';
+  targetMonth?: number;
   weatherTrigger: string;
   weatherCooldownDays: number;
   overduePolicy: 'carry_over' | 'auto_skip' | 'roll_forward';

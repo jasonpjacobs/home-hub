@@ -610,6 +610,10 @@ export function createApiHandler(db = new SheetDatabase()) {
         ? body.recurrenceDays.join(',')
         : String(body.recurrenceDays || ''),
       targetSeason: String(body.targetSeason || ''),
+      targetMonth:
+        Number(body.targetMonth) >= 1 && Number(body.targetMonth) <= 12
+          ? Math.floor(Number(body.targetMonth))
+          : 0,
       weatherTrigger: String(body.weatherTrigger || 'none'),
       weatherCooldownDays: Math.max(1, Number(body.weatherCooldownDays) || 5),
       overduePolicy: String(body.overduePolicy || (isHabit ? 'auto_skip' : 'carry_over')),
@@ -1503,12 +1507,21 @@ export function createApiHandler(db = new SheetDatabase()) {
               nextThreeDays: forecast.days.slice(0, 3),
             },
             overdue: pending.filter((i) => (i.windowEndDate || i.dueDate) < todayStr),
-            dueToday: pending.filter(
-              (i) => i.dueDate <= todayStr && (i.windowEndDate || i.dueDate) >= todayStr && i.assigneeId === member.id,
-            ),
-            openRadar: pending.filter(
-              (i) => !i.assigneeId && i.assignmentMode === 'open_pool' && isMemberEligibleForInstance(i, member.id),
-            ),
+            dueToday: pending.filter((i) => {
+              const end = i.windowEndDate || i.dueDate;
+              return end === todayStr && i.assigneeId === member.id;
+            }),
+            openRadar: pending.filter((i) => {
+              if (i.assigneeId || i.assignmentMode !== 'open_pool') return false;
+              if (!isMemberEligibleForInstance(i, member.id)) return false;
+              const end = i.windowEndDate || i.dueDate;
+              if (end < todayStr) return false;
+              if (i.triggerSource === 'weather') return true;
+              const horizonEnd = addDays(todayStr, 14);
+              if (end <= horizonEnd) return true;
+              const spanDays = i.dueDate && end ? diffDays(end, i.dueDate) : 0;
+              return i.dueDate <= todayStr && spanDays <= 31;
+            }),
             favorites: fed.tasks.filter((t) => t.isFavorite && t.active !== false),
             habits: fed.tasks.filter((t) => t.isHabit && t.active !== false),
             habitStats,
@@ -2468,6 +2481,10 @@ export function createApiHandler(db = new SheetDatabase()) {
               : String(body.recurrenceDays);
           }
           if (body.targetSeason !== undefined) t.targetSeason = String(body.targetSeason);
+          if (body.targetMonth !== undefined) {
+            const tm = Number(body.targetMonth);
+            t.targetMonth = tm >= 1 && tm <= 12 ? Math.floor(tm) : 0;
+          }
           if (body.weatherTrigger !== undefined) t.weatherTrigger = String(body.weatherTrigger);
           if (body.weatherCooldownDays !== undefined) t.weatherCooldownDays = Math.max(1, Number(body.weatherCooldownDays) || 5);
           if (body.overduePolicy !== undefined) t.overduePolicy = String(body.overduePolicy);

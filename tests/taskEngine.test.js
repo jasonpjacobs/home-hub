@@ -10,6 +10,7 @@ import {
   pickAssignee,
   reconcileOverdueInstances,
 } from '../server/taskEngine.js';
+import { buildDailyDigestNotifications } from '../server/reminders.js';
 import { buildSimulatedForecast, evaluateWeatherAlerts } from '../server/weather.js';
 
 const members = [
@@ -50,6 +51,45 @@ test('window bounds & next due dates support quarterly, seasonal, and yearly hor
     computeNextDueDate({ recurrenceType: 'custom_months', recurrenceInterval: 1 }, '2026-01-31'),
     '2026-02-28',
   );
+
+  // Yearly with targetMonth (e.g. September = 9)
+  const sepInYear = getWindowBounds('yearly', '2026-09-05', '', 1, 9);
+  assert.equal(sepInYear.dueDate, '2026-09-01');
+  assert.equal(sepInYear.windowEndDate, '2026-09-30');
+
+  const sepNextYear = getWindowBounds('yearly', '2026-11-26', '', 1, 9);
+  assert.equal(sepNextYear.dueDate, '2027-09-01');
+  assert.equal(sepNextYear.windowEndDate, '2027-09-30');
+
+  assert.equal(
+    computeNextDueDate({ recurrenceType: 'yearly', targetMonth: 9 }, '2026-09-15'),
+    '2027-09-01',
+  );
+});
+
+test('daily digest separates Overdue, Today, This Week, and This Month and hides distant yearly tasks', () => {
+  const notifs = buildDailyDigestNotifications({
+    household,
+    members: [members[0]],
+    todayStr: '2026-11-26',
+    instances: [
+      { id: 'i_over', taskTitle: 'Overdue bill', categoryPath: 'Finance', visibility: 'household', status: 'pending', assignmentMode: 'open_pool', assigneeId: '', dueDate: '2026-11-24', windowEndDate: '2026-11-24' },
+      { id: 'i_today', taskTitle: 'Take out trash', categoryPath: 'Home', visibility: 'household', status: 'pending', assignmentMode: 'open_pool', assigneeId: '', dueDate: '2026-11-26', windowEndDate: '2026-11-26' },
+      { id: 'i_week', taskTitle: 'Clean fridge', categoryPath: 'Home', visibility: 'household', status: 'pending', assignmentMode: 'open_pool', assigneeId: '', dueDate: '2026-11-01', windowEndDate: '2026-11-30' },
+      { id: 'i_month', taskTitle: 'Service furnace', categoryPath: 'Home', visibility: 'household', status: 'pending', assignmentMode: 'open_pool', assigneeId: '', dueDate: '2026-12-01', windowEndDate: '2026-12-20' },
+      { id: 'i_year_far', taskTitle: 'Flush water heater', categoryPath: 'Home', visibility: 'household', status: 'pending', assignmentMode: 'open_pool', assigneeId: '', dueDate: '2026-01-01', windowEndDate: '2026-12-31' },
+      { id: 'i_sep_next', taskTitle: 'Clean out gutters', categoryPath: 'Home', visibility: 'household', status: 'pending', assignmentMode: 'open_pool', assigneeId: '', dueDate: '2027-09-01', windowEndDate: '2027-09-30' },
+    ],
+  });
+
+  assert.equal(notifs.length, 1);
+  const body = notifs[0].body;
+  assert.match(body, /Overdue \(1\):[\s\S]*Overdue bill/);
+  assert.match(body, /Today \(1\):[\s\S]*Take out trash/);
+  assert.match(body, /This Week \(1\):[\s\S]*Clean fridge/);
+  assert.match(body, /This Month \(1\):[\s\S]*Service furnace/);
+  assert.doesNotMatch(body, /Flush water heater/);
+  assert.doesNotMatch(body, /Clean out gutters/);
 });
 
 test('reconcileOverdueInstances respects carry_over, auto_skip, and roll_forward', () => {

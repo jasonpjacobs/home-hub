@@ -1845,6 +1845,7 @@ export const demoApi = {
       recurrenceInterval: Math.max(1, Number(payload.recurrenceInterval) || 1),
       recurrenceDays: String(payload.recurrenceDays || ''),
       targetSeason: payload.targetSeason || '',
+      targetMonth: Number(payload.targetMonth) || 0,
       weatherTrigger: String(payload.weatherTrigger || 'none'),
       weatherCooldownDays: Number(payload.weatherCooldownDays) || 5,
       overduePolicy: payload.overduePolicy || (isHabit ? 'auto_skip' : 'carry_over'),

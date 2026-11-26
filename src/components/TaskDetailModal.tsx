@@ -100,6 +100,10 @@ function formatScheduleLabel(task?: Task, inst?: TaskInstance): string {
     const n = task.recurrenceInterval || 1;
     return `${prefix}Every ${n} ${n === 1 ? 'month' : 'months'}`;
   }
+  if (task.recurrenceType === 'yearly' && task.targetMonth && task.targetMonth >= 1 && task.targetMonth <= 12) {
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return `${prefix}Yearly (${months[task.targetMonth - 1]})`;
+  }
   return `${prefix}${task.recurrenceType.charAt(0).toUpperCase()}${task.recurrenceType.slice(1)}`;
 }
 

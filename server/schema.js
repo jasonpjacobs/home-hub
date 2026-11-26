@@ -108,6 +108,7 @@ export const SHEET_TABS = {
     'createdAt',
     'isHabit',
     'routineCue',
+    'targetMonth',
   ],
   TaskInstances: [
     'id',
@@ -183,6 +184,7 @@ const NUMBER_FIELDS = new Set([
   'sortOrder',
   'stepOrder',
   'weatherCooldownDays',
+  'targetMonth',
 ]);
 
 export function rowToObject(tabName, row = []) {
@@ -201,7 +203,7 @@ export function rowToObject(tabName, row = []) {
       const parsed = Number(raw);
       if (raw === '' || !Number.isFinite(parsed)) {
         if (key === 'latitude' || key === 'longitude') obj[key] = null;
-        else if (key === 'sortOrder' || key === 'stepOrder') obj[key] = 0;
+        else if (key === 'sortOrder' || key === 'stepOrder' || key === 'targetMonth') obj[key] = 0;
         else if (key === 'weatherCooldownDays') obj[key] = 5;
         else obj[key] = 1;
       } else {
