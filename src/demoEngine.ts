@@ -1859,9 +1859,12 @@ export const demoApi = {
 
     const catMap = buildCategoryPathMap(state.categories);
     const fixedMember = task.fixedMemberId ? state.members.find((m) => m.id === task.fixedMemberId) : null;
-    const due = payload.firstDueDate || today;
+    const explicitNoDate = payload.firstDueDate === '';
+    const due = explicitNoDate ? '' : payload.firstDueDate || today;
     const inst: TaskInstance | null =
-      payload.scheduleFirst === false || task.cadenceMode === 'weather_triggered'
+      payload.scheduleFirst === false ||
+      task.cadenceMode === 'weather_triggered' ||
+      (explicitNoDate && !task.projectId)
         ? null
         : {
             id: makeId('inst'),
@@ -1876,11 +1879,13 @@ export const demoApi = {
             windowType: task.cadenceMode === 'flexible_window' ? task.recurrenceType : 'daily',
             dueDate: due,
             windowEndDate:
-              payload.windowEndDate && payload.windowEndDate >= due
-                ? payload.windowEndDate
-                : task.cadenceMode === 'flexible_window' && task.recurrenceType === 'weekly'
-                  ? addDays(due, 6)
-                  : due,
+              !due
+                ? ''
+                : payload.windowEndDate && payload.windowEndDate >= due
+                  ? payload.windowEndDate
+                  : task.cadenceMode === 'flexible_window' && task.recurrenceType === 'weekly'
+                    ? addDays(due, 6)
+                    : due,
             triggerSource: task.projectId ? 'project' : 'schedule',
             weatherUrgency: '',
             weatherSummary: '',
@@ -1911,26 +1916,34 @@ export const demoApi = {
       eligibleMemberIds?: string[] | string;
       firstDueDate?: string;
       windowEndDate?: string;
+      clearSchedule?: boolean;
     },
   ) {
     const state = loadState();
     const before = cloneSnap(state);
     const t = state.tasks.find((x) => x.id === id);
     if (!t) throw new Error('Task not found');
-    const { eligibleMemberIds, firstDueDate, windowEndDate, ...rest } = payload;
+    const { eligibleMemberIds, firstDueDate, windowEndDate, clearSchedule, ...rest } = payload;
     Object.assign(t, rest);
     if (eligibleMemberIds !== undefined) {
       t.eligibleMemberIds = Array.isArray(eligibleMemberIds) ? eligibleMemberIds.join(',') : eligibleMemberIds;
     }
     const catMap = buildCategoryPathMap(state.categories);
     const fixedMember = t.fixedMemberId ? state.members.find((m) => m.id === t.fixedMemberId) : null;
+    const shouldClear = clearSchedule === true || firstDueDate === '';
+    if (shouldClear && !t.projectId) {
+      state.instances = state.instances.filter((i) => !(i.taskId === t.id && i.status === 'pending'));
+    }
     for (const inst of state.instances) {
       if (inst.taskId === t.id && OPEN_STATUSES.has(inst.status)) {
         inst.taskTitle = t.title;
         inst.categoryPath = catMap.get(t.categoryId) || 'General';
         inst.effort = t.effort;
         inst.overduePolicy = t.overduePolicy;
-        if (firstDueDate) {
+        if (shouldClear) {
+          inst.dueDate = '';
+          inst.windowEndDate = '';
+        } else if (firstDueDate) {
           inst.dueDate = firstDueDate;
           if (windowEndDate) {
             inst.windowEndDate = windowEndDate >= firstDueDate ? windowEndDate : firstDueDate;

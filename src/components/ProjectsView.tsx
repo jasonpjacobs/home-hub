@@ -268,7 +268,7 @@ export function ProjectsView({
         title: stepTitle.trim(),
         categoryId: stepCategoryId || selected.project.categoryId,
         parentTaskId: stepParentId || '',
-        dueDate: stepDue || selected.project.targetDate || data.todayStr,
+        dueDate: stepDue,
         assignmentMode: stepAssignee ? 'fixed' : 'open_pool',
         fixedMemberId: stepAssignee || undefined,
       });
@@ -508,7 +508,7 @@ export function ProjectsView({
               </p>
             )}
             <div className="assignment-meta">
-              {inst?.dueDate && <span>Due {inst.dueDate}</span>}
+              {inst?.dueDate ? <span>Due {inst.dueDate}</span> : <span>No due date</span>}
               {inst?.assigneeName ? (
                 <span>&middot; Assigned to {inst.assigneeName}</span>
               ) : (
@@ -1025,7 +1025,8 @@ export function ProjectsView({
                   <CalendarDatePicker
                     value={stepDue}
                     onChange={setStepDue}
-                    placeholder="Due date"
+                    placeholder="No due date"
+                    clearable
                     compact
                     align="right"
                   />

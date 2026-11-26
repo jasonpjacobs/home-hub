@@ -48,6 +48,7 @@ interface Props {
       eligibleMemberIds?: string[];
       firstDueDate?: string;
       windowEndDate?: string;
+      clearSchedule?: boolean;
     },
   ) => Promise<void>;
 }
@@ -234,10 +235,20 @@ export function TaskModal({
           initialTargetMonth,
         )
       : null;
-  const initialDueDate =
-    activeDueDate || initialProject?.targetDate || defaultNewWindow?.start || todayStr;
-  const initialWindowEndDate =
-    activeWindowEndDate || activeDueDate || defaultNewWindow?.end || initialDueDate;
+  const initialDueDate = task
+    ? activeDueDate || ''
+    : initialProject
+      ? initialProject.targetDate || ''
+      : initialIsHabit
+        ? todayStr
+        : defaultNewWindow?.start || '';
+  const initialWindowEndDate = task
+    ? activeWindowEndDate || activeDueDate || ''
+    : initialProject
+      ? initialProject.targetDate || ''
+      : initialIsHabit
+        ? todayStr
+        : defaultNewWindow?.end || initialDueDate;
 
   const [cadenceMode, setCadenceMode] = useState<Task['cadenceMode']>(initialCadenceMode);
   const [recurrenceType, setRecurrenceType] = useState<Task['recurrenceType']>(initialRecurrenceType);
@@ -411,13 +422,16 @@ export function TaskModal({
           visibility === 'private' ? currentUser.id : effectiveFixedMemberId,
         firstDueDate: finalCadenceMode !== 'weather_triggered' ? dueDate : undefined,
         windowEndDate:
-          finalCadenceMode === 'flexible_window'
-            ? windowEndDate >= dueDate
-              ? windowEndDate
-              : dueDate
-            : finalCadenceMode === 'strict_date'
-              ? dueDate
-              : undefined,
+          finalCadenceMode === 'weather_triggered'
+            ? undefined
+            : !dueDate
+              ? ''
+              : finalCadenceMode === 'flexible_window'
+                ? windowEndDate && windowEndDate >= dueDate
+                  ? windowEndDate
+                  : dueDate
+                : dueDate,
+        clearSchedule: finalCadenceMode !== 'weather_triggered' && !dueDate ? true : undefined,
       });
       onClose();
     } catch (err: any) {
@@ -711,6 +725,10 @@ export function TaskModal({
                       setRecurrenceType('once');
                       setWeatherTrigger('none');
                       if (!task && overduePolicy === 'auto_skip') setOverduePolicy('carry_over');
+                      if (!task && !dateTouched) {
+                        setDueDate('');
+                        setWindowEndDate('');
+                      }
                     }}
                   >
                     One-Off Task
@@ -999,10 +1017,14 @@ export function TaskModal({
 
                 {(isProjectTask || cadenceMode === 'strict_date') && (
                   <div className="field">
-                    <label htmlFor="task-due">{task || isProjectTask ? 'Due Date' : 'First Due Date'}</label>
+                    <label htmlFor="task-due">
+                      {task || isProjectTask ? 'Due Date (optional)' : 'First Due Date (optional)'}
+                    </label>
                     <CalendarDatePicker
                       id="task-due"
                       value={dueDate}
+                      placeholder="No due date (figure out later)"
+                      clearable
                       onChange={(next) => {
                         setDateTouched(true);
                         setDueDate(next);
@@ -1026,27 +1048,43 @@ export function TaskModal({
                     }}
                   >
                     <label style={{ marginBottom: 0 }}>
-                      {task ? 'Current Target Window' : 'First Target Window'}
+                      {task ? 'Current Target Window (optional)' : 'First Target Window (optional)'}
                     </label>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ padding: '2px 6px', fontSize: '0.75rem' }}
-                      onClick={() => {
-                        const w = computeDefaultWindow(
-                          recurrenceType,
-                          dueDate || todayStr,
-                          targetSeason,
-                          recurrenceInterval,
-                          targetMonth,
-                        );
-                        setDueDate(w.start);
-                        setWindowEndDate(w.end);
-                        setDateTouched(false);
-                      }}
-                    >
-                      Auto-fit to period
-                    </button>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {dueDate && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: '2px 6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}
+                          onClick={() => {
+                            setDueDate('');
+                            setWindowEndDate('');
+                            setDateTouched(true);
+                          }}
+                        >
+                          Clear window
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 6px', fontSize: '0.75rem' }}
+                        onClick={() => {
+                          const w = computeDefaultWindow(
+                            recurrenceType,
+                            dueDate || todayStr,
+                            targetSeason,
+                            recurrenceInterval,
+                            targetMonth,
+                          );
+                          setDueDate(w.start);
+                          setWindowEndDate(w.end);
+                          setDateTouched(false);
+                        }}
+                      >
+                        Auto-fit to period
+                      </button>
+                    </div>
                   </div>
                   <div className="form-row-2" style={{ marginTop: 4 }}>
                     <div className="field">
@@ -1056,10 +1094,13 @@ export function TaskModal({
                       <CalendarDatePicker
                         id="task-win-start"
                         value={dueDate}
+                        placeholder="No start date"
+                        clearable
                         onChange={(next) => {
                           setDateTouched(true);
                           setDueDate(next);
-                          if (windowEndDate < next) setWindowEndDate(next);
+                          if (!next) setWindowEndDate('');
+                          else if (!windowEndDate || windowEndDate < next) setWindowEndDate(next);
                         }}
                         placement="up"
                       />
@@ -1071,10 +1112,13 @@ export function TaskModal({
                       <CalendarDatePicker
                         id="task-win-end"
                         value={windowEndDate}
+                        placeholder="No end date"
+                        clearable
                         onChange={(next) => {
                           setDateTouched(true);
                           setWindowEndDate(next);
-                          if (dueDate > next) setDueDate(next);
+                          if (!next) setDueDate('');
+                          else if (!dueDate || dueDate > next) setDueDate(next);
                         }}
                         align="right"
                         placement="up"

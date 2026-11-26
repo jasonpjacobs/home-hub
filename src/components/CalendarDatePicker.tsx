@@ -211,6 +211,16 @@ export function CalendarDatePicker({
         <button type="button" className="cal-quick-btn" onClick={() => quickOffset(7)}>
           +1 Week
         </button>
+        {clearable && (
+          <button
+            type="button"
+            className="cal-quick-btn"
+            onClick={() => selectDate('')}
+            style={{ color: 'var(--text-muted)' }}
+          >
+            No Date
+          </button>
+        )}
       </div>
     </div>
   );

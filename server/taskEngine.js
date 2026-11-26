@@ -358,16 +358,16 @@ export function computeMemberLoads(members, instances, todayStr, windowDays = 14
     const pts = Math.max(1, Number(inst.effort) || 1);
     const endDate = inst.windowEndDate || inst.dueDate;
     if (isOpenStatus(inst.status)) {
-      if (inst.dueDate <= windowEnd) {
+      if (inst.dueDate && inst.dueDate <= windowEnd) {
         bucket.pendingPoints += pts;
         bucket.totalPoints += pts;
         bucket.pendingCount += 1;
-        if (endDate < todayStr && inst.status !== 'on_hold' && inst.status !== 'gated') {
+        if (endDate && endDate < todayStr && inst.status !== 'on_hold' && inst.status !== 'gated') {
           bucket.overdueCount += 1;
         }
       }
     } else if (inst.status === 'completed') {
-      if (inst.dueDate >= windowStart && inst.dueDate <= windowEnd) {
+      if (inst.dueDate && inst.dueDate >= windowStart && inst.dueDate <= windowEnd) {
         bucket.completedPoints += pts;
         bucket.totalPoints += pts;
         bucket.completedCount += 1;

@@ -309,3 +309,49 @@ test('Site Admin endpoints enforce SITE_ADMIN_EMAILS, report analytics, and clea
     else process.env.NODE_ENV = prevNodeEnv;
   }
 });
+
+test('tasks can be created without a due date, scheduled later, and cleared back to unscheduled', async () => {
+  const db = createMemoryDb();
+  const handler = createApiHandler(db);
+
+  const reg = await callApi(handler, {
+    method: 'POST',
+    path: '/api/auth/register',
+    body: { householdName: 'Test Home', name: 'Jason', email: 'j@test.home', password: 'password123' },
+  });
+  const cookie = String(reg.headers['Set-Cookie']).split(';')[0];
+
+  // Create a task with no due date (firstDueDate: '')
+  const created = await callApi(handler, {
+    method: 'POST',
+    path: '/api/tasks',
+    cookie,
+    body: { title: 'Research solar quotes', recurrenceType: 'once', cadenceMode: 'strict_date', firstDueDate: '' },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.instance, null);
+  const taskId = created.data.task.id;
+
+  // Schedule it later via PATCH
+  const scheduled = await callApi(handler, {
+    method: 'PATCH',
+    path: `/api/tasks/${taskId}`,
+    cookie,
+    body: { firstDueDate: '2026-12-15' },
+  });
+  assert.equal(scheduled.status, 200);
+  const openAfterSchedule = db.cache.TaskInstances.filter((i) => i.taskId === taskId && i.status === 'pending');
+  assert.equal(openAfterSchedule.length, 1);
+  assert.equal(openAfterSchedule[0].dueDate, '2026-12-15');
+
+  // Clear the due date back to unscheduled
+  const cleared = await callApi(handler, {
+    method: 'PATCH',
+    path: `/api/tasks/${taskId}`,
+    cookie,
+    body: { firstDueDate: '', clearSchedule: true },
+  });
+  assert.equal(cleared.status, 200);
+  const openAfterClear = db.cache.TaskInstances.filter((i) => i.taskId === taskId && i.status === 'pending');
+  assert.equal(openAfterClear.length, 0);
+});

@@ -127,27 +127,30 @@ export function buildDailyDigestNotifications({
     );
 
     const overdue = mine
-      .filter((i) => (i.windowEndDate || i.dueDate) < todayStr)
+      .filter((i) => {
+        const end = i.windowEndDate || i.dueDate;
+        return Boolean(end) && end < todayStr;
+      })
       .sort(byDeadline);
 
     const dueToday = mine
       .filter((i) => {
         const end = i.windowEndDate || i.dueDate;
-        return end === todayStr;
+        return Boolean(end) && end === todayStr;
       })
       .sort(byDeadline);
 
     const thisWeek = mine
       .filter((i) => {
         const end = i.windowEndDate || i.dueDate;
-        return end > todayStr && end <= weekLimit;
+        return Boolean(end) && end > todayStr && end <= weekLimit;
       })
       .sort(byDeadline);
 
     const thisMonth = mine
       .filter((i) => {
         const end = i.windowEndDate || i.dueDate;
-        return end > weekLimit && end <= monthLimit;
+        return Boolean(end) && end > weekLimit && end <= monthLimit;
       })
       .sort(byDeadline);
 
@@ -240,7 +243,7 @@ export function buildOverdueAlertNotifications({
     if (inst.status !== 'pending' && inst.status !== 'started') continue;
     if ((inst.overduePolicy || 'carry_over') !== 'carry_over') continue;
     const endDate = inst.windowEndDate || inst.dueDate;
-    if (endDate >= todayStr) continue;
+    if (!endDate || endDate >= todayStr) continue;
 
     const recipients = inst.assigneeId
       ? [inst.assigneeId]

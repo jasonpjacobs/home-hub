@@ -149,19 +149,17 @@ export function CockpitView({
     );
     const trackedIds = new Set(trackedList.map((i) => i.id));
 
-    const overdueList = open.filter(
-      (i) =>
-        !habitIds.has(i.taskId) &&
-        !trackedIds.has(i.id) &&
-        (i.windowEndDate || i.dueDate) < data.todayStr &&
-        isEligibleForMe(i, data.user.id),
-    );
+    const overdueList = open.filter((i) => {
+      if (habitIds.has(i.taskId) || trackedIds.has(i.id)) return false;
+      const end = i.windowEndDate || i.dueDate;
+      return Boolean(end) && end < data.todayStr && isEligibleForMe(i, data.user.id);
+    });
 
     const dueTodayList = open.filter((i) => {
       if (habitIds.has(i.taskId)) return false;
       if (trackedIds.has(i.id)) return false;
       const end = i.windowEndDate || i.dueDate;
-      if (end < data.todayStr) return false;
+      if (!end || end < data.todayStr) return false;
       const isMine = i.assigneeId === data.user.id;
       const isToday = i.dueDate <= data.todayStr && (i.windowType === 'daily' || end === data.todayStr);
       return isMine && isToday;
@@ -176,7 +174,7 @@ export function CockpitView({
         if (i.assignmentMode !== 'open_pool') return false;
         if (!isEligibleForMe(i, data.user.id)) return false;
         const end = i.windowEndDate || i.dueDate;
-        if (end < data.todayStr) return false;
+        if (!end || end < data.todayStr) return false;
         if (i.triggerSource === 'weather') return true;
         if (end <= radarHorizon) return true;
         const spanDays = i.dueDate && end ? diffDaysStr(end, i.dueDate) : 0;

@@ -153,7 +153,8 @@ export function TaskDetailModal({
 
   const [status, setStatus] = useState<TaskInstance['status']>(resolvedInstance?.status || 'pending');
   const [notes, setNotes] = useState(resolvedInstance?.notes || '');
-  const [dueDate, setDueDate] = useState(resolvedInstance?.dueDate || data.todayStr);
+  const [dueDate, setDueDate] = useState(resolvedInstance?.dueDate || '');
+  const [quickScheduleDate, setQuickScheduleDate] = useState(data.todayStr);
   const [assigneeId, setAssigneeId] = useState(resolvedInstance?.assigneeId || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,7 +163,7 @@ export function TaskDetailModal({
   useEffect(() => {
     setStatus(resolvedInstance?.status || 'pending');
     setNotes(resolvedInstance?.notes || '');
-    setDueDate(resolvedInstance?.dueDate || data.todayStr);
+    setDueDate(resolvedInstance?.dueDate || '');
     setAssigneeId(resolvedInstance?.assigneeId || '');
     setError(null);
   }, [
@@ -251,6 +252,7 @@ export function TaskDetailModal({
   const isOverdue = Boolean(
     resolvedInstance &&
       (resolvedInstance.status === 'pending' || resolvedInstance.status === 'started') &&
+      Boolean(resolvedInstance.windowEndDate || resolvedInstance.dueDate) &&
       (resolvedInstance.windowEndDate || resolvedInstance.dueDate) < data.todayStr,
   );
   const effort = resolvedInstance?.effort ?? resolvedTask?.effort ?? 1;
@@ -805,12 +807,55 @@ export function TaskDetailModal({
             </div>
           </form>
         ) : (
-          /* Fallback for a Task Definition with no scheduled occurrence yet (e.g. weather task or paused task) */
+          /* Fallback for an Unscheduled Task (no due date yet, weather task, or paused task) */
           <div className="task-detail-status-box">
             <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginBottom: 12 }}>
-              This task doesn’t have an active scheduled occurrence right now
-              {resolvedTask?.active === false ? ' (currently paused)' : ''}. You can log it as done today or edit its schedule settings.
+              No due date scheduled right now
+              {resolvedTask?.active === false ? ' (currently paused)' : ' — saved so you won’t forget it'}.
+              You can pick a date whenever you’re ready, log it as done today, or edit task settings.
             </p>
+
+            {resolvedTask && resolvedTask.active !== false && resolvedTask.cadenceMode !== 'weather_triggered' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <CalendarDatePicker
+                    value={quickScheduleDate}
+                    onChange={setQuickScheduleDate}
+                    placeholder="Pick a due date..."
+                    compact
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={saving || !quickScheduleDate}
+                  onClick={async () => {
+                    if (!quickScheduleDate) return;
+                    setSaving(true);
+                    setError(null);
+                    try {
+                      await api.updateTask(resolvedTask.id, { firstDueDate: quickScheduleDate });
+                      await onRefresh();
+                      onToast(`Scheduled "${resolvedTask.title}" for ${quickScheduleDate}.`);
+                    } catch (err: any) {
+                      setError(err.message || 'Could not schedule task.');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  <Calendar size={14} /> Schedule
+                </button>
+              </div>
+            )}
 
             {recentHistory.length > 0 && (
               <div style={{ marginBottom: 14 }}>

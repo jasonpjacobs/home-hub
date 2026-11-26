@@ -449,12 +449,15 @@ export default function App() {
     return inst.eligibleMemberIds.split(',').includes(dashboard.user.id);
   };
 
-  const myOverdueCount = dashboard.instances.filter(
-    (i) =>
+  const myOverdueCount = dashboard.instances.filter((i) => {
+    const end = i.windowEndDate || i.dueDate;
+    return (
       (i.status === 'pending' || i.status === 'started') &&
-      (i.windowEndDate || i.dueDate) < dashboard.todayStr &&
-      isEligibleForUser(i),
-  ).length;
+      Boolean(end) &&
+      end < dashboard.todayStr &&
+      isEligibleForUser(i)
+    );
+  }).length;
 
   const urgentWeatherCount = dashboard.weather.alerts.filter((a) => a.urgency === 'urgent').length;
   const urgentCount = urgentWeatherCount + myOverdueCount;

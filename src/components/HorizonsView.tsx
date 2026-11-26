@@ -177,6 +177,9 @@ export function HorizonsView({
         return true;
       }
       const deadline = i.windowEndDate || i.dueDate;
+      if (!deadline) {
+        return horizon === 'all';
+      }
       if (horizon === 'weekly') {
         return deadline <= weekLimit;
       }
@@ -263,7 +266,12 @@ export function HorizonsView({
     };
 
     for (const inst of items) {
-      const end = inst.windowEndDate || inst.dueDate || data.todayStr;
+      const rawEnd = inst.windowEndDate || inst.dueDate || '';
+      if (!rawEnd && horizon !== 'history') {
+        addToGroup('99_unscheduled', 'No Due Date (Figure Out Later)', 'normal', '9999-99-99', inst);
+        continue;
+      }
+      const end = rawEnd || data.todayStr;
       const isFlexibleSpan = Boolean(inst.windowEndDate && inst.windowEndDate !== inst.dueDate);
       const isOverdue =
         (inst.status === 'pending' || inst.status === 'started') && end < data.todayStr;

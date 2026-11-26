@@ -632,38 +632,56 @@ export function createApiHandler(db = new SheetDatabase()) {
     };
 
     let createdInstance = null;
+    const explicitNoDate = body.firstDueDate === '';
     const shouldSchedule =
-      body.scheduleFirst !== false && task.cadenceMode !== 'weather_triggered';
+      body.scheduleFirst !== false &&
+      task.cadenceMode !== 'weather_triggered' &&
+      !(explicitNoDate && !task.projectId);
 
     if (shouldSchedule) {
-      const anchor =
-        body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate)
-          ? body.firstDueDate
-          : task.cadenceMode === 'flexible_window'
-            ? todayStr
-            : computeNextDueDate(task, todayStr, { inclusive: true }) || todayStr;
+      if (task.projectId && explicitNoDate) {
+        createdInstance = buildInstanceFromTask({
+          task,
+          household,
+          members: hhMembers,
+          instances: fed.instances,
+          categoryPathMap: catPathMap,
+          todayStr,
+          anchorDateStr: '',
+          triggerSource: 'project',
+        });
+        createdInstance.dueDate = '';
+        createdInstance.windowEndDate = '';
+      } else {
+        const anchor =
+          body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate)
+            ? body.firstDueDate
+            : task.cadenceMode === 'flexible_window'
+              ? todayStr
+              : computeNextDueDate(task, todayStr, { inclusive: true }) || todayStr;
 
-      createdInstance = buildInstanceFromTask({
-        task,
-        household,
-        members: hhMembers,
-        instances: fed.instances,
-        categoryPathMap: catPathMap,
-        todayStr,
-        anchorDateStr: anchor,
-        triggerSource: task.projectId ? 'project' : 'schedule',
-      });
-      if (body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate)) {
-        createdInstance.dueDate = body.firstDueDate;
-        if (body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate)) {
+        createdInstance = buildInstanceFromTask({
+          task,
+          household,
+          members: hhMembers,
+          instances: fed.instances,
+          categoryPathMap: catPathMap,
+          todayStr,
+          anchorDateStr: anchor,
+          triggerSource: task.projectId ? 'project' : 'schedule',
+        });
+        if (body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate)) {
+          createdInstance.dueDate = body.firstDueDate;
+          if (body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate)) {
+            createdInstance.windowEndDate =
+              body.windowEndDate >= body.firstDueDate ? body.windowEndDate : body.firstDueDate;
+          } else if (task.cadenceMode !== 'flexible_window' || createdInstance.windowEndDate < body.firstDueDate) {
+            createdInstance.windowEndDate = body.firstDueDate;
+          }
+        } else if (body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate)) {
           createdInstance.windowEndDate =
-            body.windowEndDate >= body.firstDueDate ? body.windowEndDate : body.firstDueDate;
-        } else if (task.cadenceMode !== 'flexible_window' || createdInstance.windowEndDate < body.firstDueDate) {
-          createdInstance.windowEndDate = body.firstDueDate;
+            body.windowEndDate >= createdInstance.dueDate ? body.windowEndDate : createdInstance.dueDate;
         }
-      } else if (body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate)) {
-        createdInstance.windowEndDate =
-          body.windowEndDate >= createdInstance.dueDate ? body.windowEndDate : createdInstance.dueDate;
       }
       if (createdInstance.assigneeId) {
         task.lastAssignedMemberId = createdInstance.assigneeId;
@@ -1506,16 +1524,19 @@ export function createApiHandler(db = new SheetDatabase()) {
               alerts: weatherAlerts,
               nextThreeDays: forecast.days.slice(0, 3),
             },
-            overdue: pending.filter((i) => (i.windowEndDate || i.dueDate) < todayStr),
+            overdue: pending.filter((i) => {
+              const end = i.windowEndDate || i.dueDate;
+              return Boolean(end) && end < todayStr;
+            }),
             dueToday: pending.filter((i) => {
               const end = i.windowEndDate || i.dueDate;
-              return end === todayStr && i.assigneeId === member.id;
+              return Boolean(end) && end === todayStr && i.assigneeId === member.id;
             }),
             openRadar: pending.filter((i) => {
               if (i.assigneeId || i.assignmentMode !== 'open_pool') return false;
               if (!isMemberEligibleForInstance(i, member.id)) return false;
               const end = i.windowEndDate || i.dueDate;
-              if (end < todayStr) return false;
+              if (!end || end < todayStr) return false;
               if (i.triggerSource === 'weather') return true;
               const horizonEnd = addDays(todayStr, 14);
               if (end <= horizonEnd) return true;
@@ -2169,7 +2190,12 @@ export function createApiHandler(db = new SheetDatabase()) {
                 cadenceMode: 'strict_date',
                 recurrenceType: 'once',
                 overduePolicy: s.overduePolicy || 'carry_over',
-                firstDueDate: s.dueDate || s.firstDueDate || project.targetDate || todayStr,
+                firstDueDate:
+                  s.dueDate !== undefined
+                    ? s.dueDate
+                    : s.firstDueDate !== undefined
+                      ? s.firstDueDate
+                      : project.targetDate || '',
               },
             });
             createdSteps.push(resStep);
@@ -2207,7 +2233,12 @@ export function createApiHandler(db = new SheetDatabase()) {
               cadenceMode: s.cadenceMode || 'strict_date',
               recurrenceType: s.recurrenceType || 'once',
               overduePolicy: s.overduePolicy || 'carry_over',
-              firstDueDate: s.dueDate || s.firstDueDate || project.targetDate || todayStr,
+              firstDueDate:
+                s.dueDate !== undefined
+                  ? s.dueDate
+                  : s.firstDueDate !== undefined
+                    ? s.firstDueDate
+                    : project.targetDate || '',
             },
           });
           created.push(resStep);
@@ -2510,6 +2541,7 @@ export function createApiHandler(db = new SheetDatabase()) {
           ].includes(t.recurrenceType)
             ? t.recurrenceType
             : 'daily';
+          const hasClearSchedule = body.clearSchedule === true || body.firstDueDate === '';
           const hasDateOverride = Boolean(
             body.firstDueDate && /^\d{4}-\d{2}-\d{2}$/.test(body.firstDueDate),
           );
@@ -2517,6 +2549,12 @@ export function createApiHandler(db = new SheetDatabase()) {
             body.windowEndDate && /^\d{4}-\d{2}-\d{2}$/.test(body.windowEndDate),
           );
           let updatedOpenCount = 0;
+
+          if (hasClearSchedule && !t.projectId) {
+            store.TaskInstances = store.TaskInstances.filter(
+              (inst) => !(inst.taskId === t.id && inst.status === 'pending'),
+            );
+          }
 
           for (const inst of store.TaskInstances) {
             if (inst.taskId === t.id && isOpenStatus(inst.status)) {
@@ -2531,7 +2569,10 @@ export function createApiHandler(db = new SheetDatabase()) {
               if (body.cadenceMode !== undefined || body.recurrenceType !== undefined) {
                 inst.windowType = nextWindowType;
               }
-              if (hasDateOverride) {
+              if (hasClearSchedule) {
+                inst.dueDate = '';
+                inst.windowEndDate = '';
+              } else if (hasDateOverride) {
                 inst.dueDate = body.firstDueDate;
                 if (hasEndOverride) {
                   inst.windowEndDate =

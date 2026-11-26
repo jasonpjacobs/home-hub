@@ -42,6 +42,7 @@ type QuickFilter =
   | 'habits'
   | 'recurring'
   | 'one_off'
+  | 'unscheduled'
   | 'favorites'
   | 'private'
   | 'weather'
@@ -115,6 +116,26 @@ export function TasksTreeView({
 
   const allVisibleTasks = data.tasks;
 
+  const scheduledTaskIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const inst of data.instances) {
+      if (
+        inst.taskId &&
+        (inst.status === 'pending' ||
+          inst.status === 'started' ||
+          inst.status === 'on_hold' ||
+          inst.status === 'gated') &&
+        Boolean(inst.windowEndDate || inst.dueDate)
+      ) {
+        set.add(inst.taskId);
+      }
+    }
+    return set;
+  }, [data.instances]);
+
+  const isTaskUnscheduled = (t: Task) =>
+    t.active !== false && t.cadenceMode !== 'weather_triggered' && !scheduledTaskIds.has(t.id);
+
   const countForCategory = (catId: string) => {
     const allowed = descendantsMap.get(catId) || new Set([catId]);
     return allVisibleTasks.filter((t) => allowed.has(t.categoryId)).length;
@@ -139,6 +160,7 @@ export function TasksTreeView({
             return false;
           }
         }
+        if (quickFilter === 'unscheduled' && !isTaskUnscheduled(t)) return false;
         if (quickFilter === 'favorites' && !t.isFavorite) return false;
         if (quickFilter === 'private' && t.visibility !== 'private') return false;
         if (quickFilter === 'weather' && (!t.weatherTrigger || t.weatherTrigger === 'none')) return false;
@@ -580,6 +602,7 @@ export function TasksTreeView({
                   ['habits', 'Habits'],
                   ['recurring', 'Recurring'],
                   ['one_off', 'One-Off'],
+                  ['unscheduled', 'No Due Date'],
                   ['favorites', 'Favorites'],
                   ['private', 'Private'],
                   ['weather', 'Weather'],
@@ -748,6 +771,11 @@ export function TasksTreeView({
                                 </span>
                               )}
                               {t.needsDetails && <span className="tag warning">Needs details</span>}
+                              {isTaskUnscheduled(t) && (
+                                <span className="tag" style={{ color: 'var(--text-muted)' }}>
+                                  No due date
+                                </span>
+                              )}
                               {t.cadenceMode === 'weather_triggered' && (
                                 <span className="tag info">
                                   <CloudRain size={11} /> {t.weatherTrigger.replace('_', ' ')}

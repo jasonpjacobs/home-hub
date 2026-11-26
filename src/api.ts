@@ -244,6 +244,7 @@ const serverApi = {
       eligibleMemberIds?: string[] | string;
       firstDueDate?: string;
       windowEndDate?: string;
+      clearSchedule?: boolean;
     },
   ) =>
     request<{ task: Task }>(`/api/tasks/${encodeURIComponent(id)}`, {
