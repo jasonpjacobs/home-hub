@@ -533,10 +533,14 @@ export function CockpitView({
         <div className="section-heading" style={{ justifyContent: 'space-between' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <Flame size={14} style={{ color: '#c86d51' }} />
-            <span>Daily Habits</span>
+            <span>Habits</span>
             {habits.length > 0 && (
               <span className="tag primary">
-                {habits.filter((h) => habitStatMap.get(h.id)?.doneToday).length} / {habits.length} today
+                {habits.filter((h) => {
+                  const s = habitStatMap.get(h.id);
+                  return Boolean(s?.doneToday || s?.weeklyGoalMet);
+                }).length}{' '}
+                / {habits.length} on track
               </span>
             )}
           </span>
@@ -570,6 +574,12 @@ export function CockpitView({
               const stat = habitStatMap.get(h.id);
               const doneToday = Boolean(stat?.doneToday);
               const streak = stat?.currentStreak || 0;
+              const streakUnit = stat?.streakUnit === 'weeks' ? 'w' : 'd';
+              const targetPerWeek =
+                stat?.targetPerWeek ||
+                (h.recurrenceType === 'times_per_week' ? Math.max(1, h.recurrenceInterval || 3) : 0);
+              const completedThisWeek = stat?.completedThisWeek || 0;
+              const weeklyGoalMet = Boolean(stat?.weeklyGoalMet);
               const completedLast7 = stat?.completedLast7 || 0;
               const last7 = stat?.last7Days || [];
               const cue = h.routineCue || 'anytime';
@@ -591,7 +601,7 @@ export function CockpitView({
                       : Sparkles;
 
               return (
-                <div key={h.id} className={`habit-card ${doneToday ? 'done-today' : ''}`}>
+                <div key={h.id} className={`habit-card ${doneToday || weeklyGoalMet ? 'done-today' : ''}`}>
                   <div className="habit-card-top">
                     <button
                       type="button"
@@ -619,6 +629,11 @@ export function CockpitView({
                         <span className="habit-cue-pill">
                           <CueIcon size={11} /> {cueLabel}
                         </span>
+                        {targetPerWeek > 0 && (
+                          <span className="habit-cue-pill" title={`Weekly goal: ${targetPerWeek}x per week`}>
+                            {targetPerWeek}x / wk
+                          </span>
+                        )}
                         {h.visibility === 'private' && (
                           <span className="habit-cue-pill" title="Private (Personal Sheet)">
                             <Lock size={10} /> Private
@@ -644,20 +659,35 @@ export function CockpitView({
                         <span
                           key={pt.date}
                           className={`habit-dot ${pt.done ? 'done' : ''} ${pt.isToday ? 'today' : ''}`}
-                          title={`${pt.weekday} (${pt.date}): ${pt.done ? 'Done' : pt.isToday ? 'Today' : 'Missed'}`}
+                          title={`${pt.weekday} (${pt.date}): ${pt.done ? 'Done' : pt.isToday ? 'Today' : 'Rest / Missed'}`}
                         >
                           {pt.weekday.charAt(0)}
                         </span>
                       ))}
                     </div>
                     <div className="habit-stats-meta">
-                      <span className="habit-rate">{completedLast7}/7</span>
+                      {targetPerWeek > 0 ? (
+                        <span
+                          className="habit-rate"
+                          style={weeklyGoalMet ? { color: 'var(--primary)', fontWeight: 700 } : undefined}
+                          title={`${completedThisWeek} of ${targetPerWeek} completed this week (Mon–Sun)`}
+                        >
+                          {completedThisWeek}/{targetPerWeek} wk{weeklyGoalMet ? ' ✓' : ''}
+                        </span>
+                      ) : (
+                        <span className="habit-rate">{completedLast7}/7</span>
+                      )}
                       {streak > 0 && (
                         <span
                           className="habit-streak-pill"
-                          title={`Current streak: ${streak} day${streak === 1 ? '' : 's'}${stat?.bestStreak && stat.bestStreak > streak ? ` (Best: ${stat.bestStreak}d)` : ''}`}
+                          title={
+                            streakUnit === 'w'
+                              ? `Current streak: ${streak} week${streak === 1 ? '' : 's'} hitting ${targetPerWeek}x/wk${stat?.bestStreak && stat.bestStreak > streak ? ` (Best: ${stat.bestStreak}w)` : ''}`
+                              : `Current streak: ${streak} day${streak === 1 ? '' : 's'}${stat?.bestStreak && stat.bestStreak > streak ? ` (Best: ${stat.bestStreak}d)` : ''}`
+                          }
                         >
-                          <Flame size={11} /> {streak}d
+                          <Flame size={11} /> {streak}
+                          {streakUnit}
                         </span>
                       )}
                     </div>

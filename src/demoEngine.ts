@@ -1236,6 +1236,14 @@ function computeHabitStats(tasks: Task[], instances: TaskInstance[], todayStr: s
     }
   }
 
+  const getMonday = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay();
+    return addDays(dateStr, dow === 0 ? -6 : 1 - dow);
+  };
+  const currentWeekStart = getMonday(todayStr);
+  const currentWeekEnd = addDays(currentWeekStart, 6);
+
   return habits.map((habit) => {
     const doneDates = completedByTask.get(habit.id) || new Set<string>();
     const last7Days = [];
@@ -1250,6 +1258,50 @@ function computeHabitStats(tasks: Task[], instances: TaskInstance[], todayStr: s
     }
     const doneToday = doneDates.has(todayStr);
     const completedLast7 = last7Days.filter((d) => d.done).length;
+    if (habit.recurrenceType === 'times_per_week') {
+      const targetPerWeek = Math.min(7, Math.max(1, Number(habit.recurrenceInterval) || 3));
+      const countByWeek = new Map<string, number>();
+      let completedThisWeek = 0;
+      for (const d of doneDates) {
+        if (d >= currentWeekStart && d <= currentWeekEnd) completedThisWeek++;
+        const wk = getMonday(d);
+        countByWeek.set(wk, (countByWeek.get(wk) || 0) + 1);
+      }
+      const weeklyGoalMet = completedThisWeek >= targetPerWeek;
+      let currentStreak = 0;
+      let weekCursor = weeklyGoalMet ? currentWeekStart : addDays(currentWeekStart, -7);
+      let safety = 0;
+      while ((countByWeek.get(weekCursor) || 0) >= targetPerWeek && safety < 260) {
+        currentStreak++;
+        weekCursor = addDays(weekCursor, -7);
+        safety++;
+      }
+      const metWeeks = Array.from(countByWeek.entries())
+        .filter(([, c]) => c >= targetPerWeek)
+        .map(([wk]) => wk)
+        .sort();
+      let bestStreak = 0;
+      let run = 0;
+      let prevWk = '';
+      for (const wk of metWeeks) {
+        run = prevWk && diffDays(wk, prevWk) === 7 ? run + 1 : 1;
+        if (run > bestStreak) bestStreak = run;
+        prevWk = wk;
+      }
+      return {
+        taskId: habit.id,
+        doneToday,
+        todayCompletedInstanceId: todayInstByTask.get(habit.id) || null,
+        currentStreak,
+        bestStreak,
+        streakUnit: 'weeks' as const,
+        completedLast7,
+        targetPerWeek,
+        completedThisWeek,
+        weeklyGoalMet,
+        last7Days,
+      };
+    }
     let currentStreak = 0;
     let cursor = doneToday ? todayStr : addDays(todayStr, -1);
     let safety = 0;
@@ -1273,7 +1325,11 @@ function computeHabitStats(tasks: Task[], instances: TaskInstance[], todayStr: s
       todayCompletedInstanceId: todayInstByTask.get(habit.id) || null,
       currentStreak,
       bestStreak,
+      streakUnit: 'days' as const,
       completedLast7,
+      targetPerWeek: 0,
+      completedThisWeek: 0,
+      weeklyGoalMet: false,
       last7Days,
     };
   });

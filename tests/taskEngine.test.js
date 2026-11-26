@@ -227,3 +227,52 @@ test('computeHabitStats computes 7-day dots, preserves active streak before toda
   assert.equal(s2.completedLast7, 3);
   assert.equal(s2.last7Days[6].done, true);
 });
+
+test('computeHabitStats tracks N times per week habits with weekly progress and week-based streaks', () => {
+  const habitTasks = [
+    {
+      id: 'h_lift',
+      title: 'Strength Training',
+      isHabit: true,
+      active: true,
+      recurrenceType: 'times_per_week',
+      recurrenceInterval: 3,
+    },
+  ];
+  // Today is Thu 2026-11-26 (current week Mon 11-23 .. Sun 11-29).
+  // Previous week (11-16..11-22) had 3 workouts; week before (11-09..11-15) had 3 workouts;
+  // current week has 2 workouts so far (Mon 11-23 & Wed 11-25) -> streak 2w preserved mid-week!
+  const baseInstances = [
+    { id: 'w1a', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-09', completedAt: '2026-11-09T18:00:00Z' },
+    { id: 'w1b', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-11', completedAt: '2026-11-11T18:00:00Z' },
+    { id: 'w1c', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-13', completedAt: '2026-11-13T18:00:00Z' },
+    { id: 'w2a', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-16', completedAt: '2026-11-16T18:00:00Z' },
+    { id: 'w2b', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-18', completedAt: '2026-11-18T18:00:00Z' },
+    { id: 'w2c', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-20', completedAt: '2026-11-20T18:00:00Z' },
+    { id: 'w3a', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-23', completedAt: '2026-11-23T18:00:00Z' },
+    { id: 'w3b', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-25', completedAt: '2026-11-25T18:00:00Z' },
+  ];
+
+  const [midWeek] = computeHabitStats(habitTasks, baseInstances, '2026-11-26');
+  assert.equal(midWeek.targetPerWeek, 3);
+  assert.equal(midWeek.completedThisWeek, 2);
+  assert.equal(midWeek.weeklyGoalMet, false);
+  assert.equal(midWeek.streakUnit, 'weeks');
+  assert.equal(midWeek.currentStreak, 2);
+  assert.equal(midWeek.bestStreak, 2);
+
+  // Logging the 3rd workout today completes the week and increments streak to 3w!
+  const [afterThird] = computeHabitStats(
+    habitTasks,
+    [
+      ...baseInstances,
+      { id: 'w3c', taskId: 'h_lift', status: 'completed', dueDate: '2026-11-26', completedAt: '2026-11-26T18:00:00Z' },
+    ],
+    '2026-11-26',
+  );
+  assert.equal(afterThird.doneToday, true);
+  assert.equal(afterThird.completedThisWeek, 3);
+  assert.equal(afterThird.weeklyGoalMet, true);
+  assert.equal(afterThird.currentStreak, 3);
+  assert.equal(afterThird.bestStreak, 3);
+});

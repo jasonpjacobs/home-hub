@@ -375,18 +375,20 @@ export function TaskModal({
     setError(null);
     try {
       const finalIsHabit = !isProjectTask && isHabit;
-      const finalCadenceMode: Task['cadenceMode'] = isProjectTask
-        ? 'strict_date'
-        : finalIsHabit
-          ? 'strict_date'
-          : cadenceMode;
       const finalRecurrenceType: Task['recurrenceType'] = isProjectTask
         ? 'once'
-        : finalCadenceMode === 'weather_triggered'
+        : cadenceMode === 'weather_triggered' && !finalIsHabit
           ? 'once'
           : finalIsHabit && recurrenceType === 'once'
             ? 'daily'
             : recurrenceType;
+      const finalCadenceMode: Task['cadenceMode'] = isProjectTask
+        ? 'strict_date'
+        : finalIsHabit
+          ? finalRecurrenceType === 'times_per_week'
+            ? 'flexible_window'
+            : 'strict_date'
+          : cadenceMode;
       const finalAssignMode: Task['assignmentMode'] =
         visibility === 'private' ? 'fixed' : effectiveAssignmentMode;
 
@@ -773,34 +775,65 @@ export function TaskModal({
               </div>
 
               {isHabit ? (
-                <div className="form-row-2">
-                  <div className="field">
-                    <label htmlFor="task-rec">Habit Cadence</label>
-                    <select
-                      id="task-rec"
-                      className="select"
-                      value={recurrenceType}
-                      onChange={(e) => setRecurrenceType(e.target.value as Task['recurrenceType'])}
-                    >
-                      <option value="daily">Every Day</option>
-                      <option value="weekly">Specific Days of Week</option>
-                      <option value="custom_days">Every N Days</option>
-                    </select>
+                <>
+                  <div className="form-row-2">
+                    <div className="field">
+                      <label htmlFor="task-rec">Habit Cadence</label>
+                      <select
+                        id="task-rec"
+                        className="select"
+                        value={recurrenceType}
+                        onChange={(e) => {
+                          const next = e.target.value as Task['recurrenceType'];
+                          setRecurrenceType(next);
+                          if (next === 'times_per_week') {
+                            setCadenceMode('flexible_window');
+                            if (recurrenceInterval < 1 || recurrenceInterval > 7 || recurrenceInterval === 1) {
+                              setRecurrenceInterval(3);
+                            }
+                          } else {
+                            setCadenceMode('strict_date');
+                          }
+                        }}
+                      >
+                        <option value="daily">Every Day</option>
+                        <option value="times_per_week">N Times per Week (e.g. 3x/wk)</option>
+                        <option value="weekly">Specific Days of Week</option>
+                        <option value="custom_days">Every N Days</option>
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label htmlFor="task-overdue">If Missed</label>
+                      <select
+                        id="task-overdue"
+                        className="select"
+                        value={overduePolicy}
+                        onChange={(e) => setOverduePolicy(e.target.value as Task['overduePolicy'])}
+                      >
+                        <option value="auto_skip">Auto-Skip (recommended — no overdue guilt)</option>
+                        <option value="roll_forward">Roll Forward to Today</option>
+                        <option value="carry_over">Carry Over (mark overdue)</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="field">
-                    <label htmlFor="task-overdue">If Missed</label>
-                    <select
-                      id="task-overdue"
-                      className="select"
-                      value={overduePolicy}
-                      onChange={(e) => setOverduePolicy(e.target.value as Task['overduePolicy'])}
-                    >
-                      <option value="auto_skip">Auto-Skip (recommended — no overdue guilt)</option>
-                      <option value="roll_forward">Roll Forward to Today</option>
-                      <option value="carry_over">Carry Over (mark overdue)</option>
-                    </select>
-                  </div>
-                </div>
+                  {recurrenceType === 'times_per_week' && (
+                    <div className="field">
+                      <label>Weekly Goal (times per week)</label>
+                      <div className="pill-group">
+                        {[1, 2, 3, 4, 5, 6].map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            className={`pill ${recurrenceInterval === n ? 'active' : ''}`}
+                            onClick={() => setRecurrenceInterval(n)}
+                          >
+                            {n}x / week
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : cadenceMode === 'weather_triggered' ? (
                 <div className="field">
                   <label htmlFor="task-weather">Weather Condition</label>

@@ -633,9 +633,11 @@ export function createApiHandler(db = new SheetDatabase()) {
 
     let createdInstance = null;
     const explicitNoDate = body.firstDueDate === '';
+    const isFlexibleWeeklyHabit = isHabit && task.recurrenceType === 'times_per_week';
     const shouldSchedule =
       body.scheduleFirst !== false &&
       task.cadenceMode !== 'weather_triggered' &&
+      !isFlexibleWeeklyHabit &&
       !(explicitNoDate && !task.projectId);
 
     if (shouldSchedule) {
@@ -764,9 +766,13 @@ export function createApiHandler(db = new SheetDatabase()) {
           }
         }
       } else {
-        inst.status = 'pending';
-        inst.completedAt = '';
-        inst.completedBy = '';
+        if (inst.triggerSource === 'quick_log') {
+          store.TaskInstances = store.TaskInstances.filter((x) => x.id !== inst.id);
+        } else {
+          inst.status = 'pending';
+          inst.completedAt = '';
+          inst.completedBy = '';
+        }
       }
       return { instance: inst, nextInstance };
     };

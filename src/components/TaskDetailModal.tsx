@@ -73,6 +73,9 @@ function formatScheduleLabel(task?: Task, inst?: TaskInstance): string {
         ? ` · ${task.routineCue.charAt(0).toUpperCase()}${task.routineCue.slice(1)}`
         : '';
     if (task.recurrenceType === 'daily') return `Daily habit${cue}`;
+    if (task.recurrenceType === 'times_per_week') {
+      return `Habit (${task.recurrenceInterval || 3}x / week)${cue}`;
+    }
     if (task.recurrenceType === 'weekly' && task.recurrenceDays) {
       return `Habit (${task.recurrenceDays})${cue}`;
     }
@@ -544,13 +547,18 @@ export function TaskDetailModal({
           <div className="task-detail-habit-box">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span className="task-detail-section-label" style={{ marginBottom: 0 }}>
-                Last 7 Days Consistency
+                {habitStat.targetPerWeek ? `This Week (${habitStat.targetPerWeek}x / week goal)` : 'Last 7 Days Consistency'}
               </span>
               <div className="habit-stats-meta">
-                <span className="habit-rate">{habitStat.completedLast7}/7 days</span>
+                <span className="habit-rate">
+                  {habitStat.targetPerWeek
+                    ? `${habitStat.completedThisWeek || 0}/${habitStat.targetPerWeek} this week${habitStat.weeklyGoalMet ? ' ✓' : ''}`
+                    : `${habitStat.completedLast7}/7 days`}
+                </span>
                 {habitStat.currentStreak > 0 && (
                   <span className="habit-streak-pill">
-                    <Flame size={11} /> {habitStat.currentStreak}d streak
+                    <Flame size={11} /> {habitStat.currentStreak}
+                    {habitStat.streakUnit === 'weeks' ? 'w' : 'd'} streak
                   </span>
                 )}
               </div>

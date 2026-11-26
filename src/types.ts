@@ -85,6 +85,7 @@ export interface Task {
   recurrenceType:
     | 'daily'
     | 'weekly'
+    | 'times_per_week'
     | 'biweekly'
     | 'monthly'
     | 'custom_months'
@@ -253,7 +254,11 @@ export interface HabitStat {
   todayCompletedInstanceId: string | null;
   currentStreak: number;
   bestStreak: number;
+  streakUnit?: 'days' | 'weeks';
   completedLast7: number;
+  targetPerWeek?: number;
+  completedThisWeek?: number;
+  weeklyGoalMet?: boolean;
   last7Days: HabitDayPoint[];
 }
 

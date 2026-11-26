@@ -134,7 +134,10 @@ export function TasksTreeView({
   }, [data.instances]);
 
   const isTaskUnscheduled = (t: Task) =>
-    t.active !== false && t.cadenceMode !== 'weather_triggered' && !scheduledTaskIds.has(t.id);
+    t.active !== false &&
+    !t.isHabit &&
+    t.cadenceMode !== 'weather_triggered' &&
+    !scheduledTaskIds.has(t.id);
 
   const countForCategory = (catId: string) => {
     const allowed = descendantsMap.get(catId) || new Set([catId]);
@@ -809,6 +812,9 @@ export function TasksTreeView({
                                     ? 'Weather-triggered'
                                     : (() => {
                                         const pref = t.cadenceMode === 'flexible_window' ? 'Flexible ' : '';
+                                        if (t.recurrenceType === 'times_per_week') {
+                                          return `${t.recurrenceInterval || 3}x / week`;
+                                        }
                                         if (t.recurrenceType === 'custom_days') {
                                           const n = t.recurrenceInterval || 1;
                                           return `${pref}every ${n} ${n === 1 ? 'day' : 'days'}`;

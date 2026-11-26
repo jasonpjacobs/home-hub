@@ -91,12 +91,16 @@ export function getWindowBounds(
   const y = dt.getUTCFullYear();
   const m = dt.getUTCMonth(); // 0..11
 
-  if (recurrenceType === 'weekly' || recurrenceType === 'biweekly') {
+  if (recurrenceType === 'weekly' || recurrenceType === 'biweekly' || recurrenceType === 'times_per_week') {
     const dow = dt.getUTCDay(); // 0 Sun .. 6 Sat
     const mondayOffset = dow === 0 ? -6 : 1 - dow;
     const start = addDays(anchorDateStr, mondayOffset);
     const span = recurrenceType === 'biweekly' ? 13 : 6;
-    return { windowType: recurrenceType, dueDate: start, windowEndDate: addDays(start, span) };
+    return {
+      windowType: recurrenceType === 'biweekly' ? 'biweekly' : 'weekly',
+      dueDate: start,
+      windowEndDate: addDays(start, span),
+    };
   }
 
   if (recurrenceType === 'monthly') {
@@ -181,6 +185,10 @@ export function computeNextDueDate(task, fromDateStr, { inclusive = false } = {}
 
   if (type === 'daily' || type === 'custom_days') {
     return addDays(fromDateStr, inclusive ? 0 : interval);
+  }
+
+  if (type === 'times_per_week') {
+    return addDays(fromDateStr, inclusive ? 0 : 1);
   }
 
   if (type === 'weekly' || type === 'biweekly') {
@@ -569,6 +577,7 @@ export function generateUpcomingSchedule({
     if (task.projectId) continue; // Project steps are scheduled directly
     if (task.cadenceMode === 'weather_triggered') continue;
     if (task.recurrenceType === 'once') continue;
+    if (task.isHabit && task.recurrenceType === 'times_per_week') continue; // Flexible check-in habit
 
     // For flexible windows >= weekly, just ensure one active pending instance covers current window
     if (task.cadenceMode === 'flexible_window' && task.recurrenceType !== 'daily') {
@@ -762,6 +771,13 @@ export function computeHabitStats(tasks = [], instances = [], todayStr) {
     }
   }
 
+  const getMondayOfWeek = (dateStr) => {
+    const dow = parseDateStr(dateStr).getUTCDay();
+    return addDays(dateStr, dow === 0 ? -6 : 1 - dow);
+  };
+  const currentWeekStart = getMondayOfWeek(todayStr);
+  const currentWeekEnd = addDays(currentWeekStart, 6);
+
   return habits.map((habit) => {
     const doneDates = completedByTask.get(habit.id) || new Set();
     const last7Days = [];
@@ -777,6 +793,60 @@ export function computeHabitStats(tasks = [], instances = [], todayStr) {
 
     const doneToday = doneDates.has(todayStr);
     const completedLast7 = last7Days.filter((d) => d.done).length;
+    const isWeeklyTarget = habit.recurrenceType === 'times_per_week';
+    const targetPerWeek = isWeeklyTarget
+      ? Math.min(7, Math.max(1, Number(habit.recurrenceInterval) || 3))
+      : 0;
+
+    if (isWeeklyTarget) {
+      const countByWeek = new Map();
+      let completedThisWeek = 0;
+      for (const d of doneDates) {
+        if (d >= currentWeekStart && d <= currentWeekEnd) completedThisWeek++;
+        const wk = getMondayOfWeek(d);
+        countByWeek.set(wk, (countByWeek.get(wk) || 0) + 1);
+      }
+      const weeklyGoalMet = completedThisWeek >= targetPerWeek;
+
+      // Current weekly streak: consecutive weeks meeting targetPerWeek (preserving streak mid-week)
+      let currentStreak = 0;
+      let weekCursor = weeklyGoalMet ? currentWeekStart : addDays(currentWeekStart, -7);
+      let safety = 0;
+      while ((countByWeek.get(weekCursor) || 0) >= targetPerWeek && safety < 520) {
+        currentStreak++;
+        weekCursor = addDays(weekCursor, -7);
+        safety++;
+      }
+
+      // Best weekly streak across history
+      const metWeeks = Array.from(countByWeek.entries())
+        .filter(([, count]) => count >= targetPerWeek)
+        .map(([wk]) => wk)
+        .sort();
+      let bestStreak = 0;
+      let run = 0;
+      let prevWk = '';
+      for (const wk of metWeeks) {
+        if (prevWk && diffDays(wk, prevWk) === 7) run++;
+        else run = 1;
+        if (run > bestStreak) bestStreak = run;
+        prevWk = wk;
+      }
+
+      return {
+        taskId: habit.id,
+        doneToday,
+        todayCompletedInstanceId: todayCompletedInstanceByTask.get(habit.id) || null,
+        currentStreak,
+        bestStreak,
+        streakUnit: 'weeks',
+        completedLast7,
+        targetPerWeek,
+        completedThisWeek,
+        weeklyGoalMet,
+        last7Days,
+      };
+    }
 
     // Current streak: count backwards from today (if done today) or yesterday (so morning streak stays intact)
     let currentStreak = 0;
@@ -809,7 +879,11 @@ export function computeHabitStats(tasks = [], instances = [], todayStr) {
       todayCompletedInstanceId: todayCompletedInstanceByTask.get(habit.id) || null,
       currentStreak,
       bestStreak,
+      streakUnit: 'days',
       completedLast7,
+      targetPerWeek: 0,
+      completedThisWeek: 0,
+      weeklyGoalMet: false,
       last7Days,
     };
   });
