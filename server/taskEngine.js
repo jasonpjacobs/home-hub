@@ -7,14 +7,18 @@ export function isOpenStatus(status) {
   return OPEN_STATUSES.has(status);
 }
 
-export function getTodayStr(timezone = 'UTC') {
+export function getDateStrInTimezone(isoOrDate, timezone = 'UTC') {
+  if (!isoOrDate) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(isoOrDate))) return String(isoOrDate);
+  const dt = new Date(isoOrDate);
+  if (Number.isNaN(dt.getTime())) return String(isoOrDate).slice(0, 10);
   try {
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).formatToParts(new Date());
+    }).formatToParts(dt);
     const y = parts.find((p) => p.type === 'year')?.value;
     const m = parts.find((p) => p.type === 'month')?.value;
     const d = parts.find((p) => p.type === 'day')?.value;
@@ -22,8 +26,11 @@ export function getTodayStr(timezone = 'UTC') {
   } catch {
     // Fallback
   }
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return formatDateUTC(dt);
+}
+
+export function getTodayStr(timezone = 'UTC') {
+  return getDateStrInTimezone(new Date(), timezone);
 }
 
 export function parseDateStr(dateStr) {
@@ -745,19 +752,18 @@ export function computeRebalancePlan({
  * Compute lightweight habit consistency stats (7-day dots + current/best streak)
  * directly from existing TaskInstances — zero extra Google Sheet tabs required.
  */
-export function computeHabitStats(tasks = [], instances = [], todayStr) {
+export function computeHabitStats(tasks = [], instances = [], todayStr, timezone = 'UTC') {
   const habits = tasks.filter((t) => Boolean(t.isHabit) && t.active !== false);
   const completedByTask = new Map();
   const todayCompletedInstanceByTask = new Map();
 
   for (const inst of instances) {
     if (inst.status !== 'completed' || !inst.taskId) continue;
-    const completedDate =
-      inst.completedAt && /^\d{4}-\d{2}-\d{2}/.test(String(inst.completedAt))
-        ? String(inst.completedAt).slice(0, 10)
-        : inst.dueDate || '';
+    const completedDate = inst.completedAt
+      ? getDateStrInTimezone(inst.completedAt, timezone)
+      : inst.dueDate || '';
     const dateKey =
-      inst.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(inst.dueDate) && inst.triggerSource !== 'quick_log'
+      inst.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(inst.dueDate)
         ? inst.dueDate
         : completedDate;
     if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;

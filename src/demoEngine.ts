@@ -1225,8 +1225,7 @@ function computeHabitStats(tasks: Task[], instances: TaskInstance[], todayStr: s
   for (const inst of instances) {
     if (inst.status !== 'completed' || !inst.taskId) continue;
     const compDate = inst.completedAt ? String(inst.completedAt).slice(0, 10) : inst.dueDate;
-    const dateKey =
-      inst.dueDate && inst.triggerSource !== 'quick_log' ? inst.dueDate : compDate;
+    const dateKey = inst.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(inst.dueDate) ? inst.dueDate : compDate;
     if (!dateKey) continue;
     if (!completedByTask.has(inst.taskId)) completedByTask.set(inst.taskId, new Set());
     completedByTask.get(inst.taskId)!.add(dateKey);

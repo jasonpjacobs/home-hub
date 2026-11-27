@@ -23,6 +23,7 @@ import {
   computeRebalancePlan,
   diffDays,
   generateUpcomingSchedule,
+  getDateStrInTimezone,
   getTodayStr,
   isMemberEligibleForInstance,
   isOpenStatus,
@@ -1516,7 +1517,12 @@ export function createApiHandler(db = new SheetDatabase()) {
           (a.dueDate || '').localeCompare(b.dueDate || ''),
         );
         const loads = computeMemberLoads(hhMembers, instancesSorted, todayStr, 14);
-        const habitStats = computeHabitStats(fed.tasks, instancesSorted, todayStr);
+        const habitStats = computeHabitStats(
+          fed.tasks,
+          instancesSorted,
+          todayStr,
+          household.timezone || 'UTC',
+        );
 
         if (normalizedPath === '/api/cockpit') {
           const pending = instancesSorted.filter((i) => i.status === 'pending');
@@ -2414,7 +2420,8 @@ export function createApiHandler(db = new SheetDatabase()) {
           (i) =>
             i.taskId === taskId &&
             i.status === 'completed' &&
-            String(i.completedAt || '').startsWith(todayStr),
+            (i.dueDate === todayStr ||
+              getDateStrInTimezone(i.completedAt, household.timezone || 'UTC') === todayStr),
         );
         if (alreadyDoneToday) {
           return sendJson(res, 200, {

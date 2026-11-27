@@ -194,9 +194,28 @@ export function CockpitView({
 
     const rough = data.tasks.filter((t) => t.needsDetails && t.active !== false);
 
-    const doneToday = data.instances.filter(
-      (i) => i.status === 'completed' && String(i.completedAt || '').startsWith(data.todayStr),
-    );
+    const doneToday = data.instances.filter((i) => {
+      if (i.status !== 'completed') return false;
+      if (i.dueDate === data.todayStr && (i.triggerSource === 'quick_log' || i.triggerSource === 'ad_hoc')) {
+        return true;
+      }
+      if (!i.completedAt) return i.dueDate === data.todayStr;
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone: data.household.timezone || undefined,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).formatToParts(new Date(i.completedAt));
+        const y = parts.find((p) => p.type === 'year')?.value;
+        const m = parts.find((p) => p.type === 'month')?.value;
+        const d = parts.find((p) => p.type === 'day')?.value;
+        if (y && m && d) return `${y}-${m}-${d}` === data.todayStr;
+      } catch {
+        // fallback
+      }
+      return String(i.completedAt).startsWith(data.todayStr);
+    });
 
     return {
       habits: habitList,

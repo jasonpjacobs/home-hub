@@ -275,4 +275,26 @@ test('computeHabitStats tracks N times per week habits with weekly progress and 
   assert.equal(afterThird.weeklyGoalMet, true);
   assert.equal(afterThird.currentStreak, 3);
   assert.equal(afterThird.bestStreak, 3);
+
+  // Evening local check-in after midnight UTC (e.g. 5:41 PM Pacific on 11-26 = 2026-11-27T01:41Z)
+  const [eveningCheckIn] = computeHabitStats(
+    habitTasks,
+    [
+      {
+        id: 'eve1',
+        taskId: 'h_lift',
+        status: 'completed',
+        triggerSource: 'quick_log',
+        dueDate: '2026-11-26',
+        completedAt: '2026-11-27T01:41:38.634Z',
+      },
+    ],
+    '2026-11-26',
+    'America/Los_Angeles',
+  );
+  assert.equal(eveningCheckIn.doneToday, true);
+  assert.equal(eveningCheckIn.todayCompletedInstanceId, 'eve1');
+  assert.equal(eveningCheckIn.completedLast7, 1);
+  assert.equal(eveningCheckIn.completedThisWeek, 1);
+  assert.equal(eveningCheckIn.last7Days[6].done, true);
 });
