@@ -354,6 +354,16 @@ const serverApi = {
   markAllNotificationsRead: () =>
     request<{ ok: boolean }>('/api/notifications/read-all', { method: 'POST' }),
 
+  deleteNotification: (id: string) =>
+    request<{ ok: boolean }>(`/api/notifications/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
+  clearAllNotifications: () =>
+    request<{ ok: boolean; deletedCount: number }>('/api/notifications', {
+      method: 'DELETE',
+    }),
+
   syncSheet: () => request<{ ok: boolean }>('/api/sheet/sync', { method: 'POST' }),
   initSheet: () => request<{ ok: boolean }>('/api/sheet/init', { method: 'POST' }),
 

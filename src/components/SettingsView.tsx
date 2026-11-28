@@ -1108,51 +1108,106 @@ export function SettingsView({ data, initialSubTab = 'general', onRefresh, onToa
           </div>
 
           <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
               <h3>Recent Notifications ({data.notifications.length})</h3>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={async () => {
-                  await api.markAllNotificationsRead();
-                  await onRefresh();
-                  onToast('Marked read.');
-                }}
-              >
-                <CheckCheck size={14} /> Mark Mine Read
-              </button>
-            </div>
-            <div className="chore-list">
-              {data.notifications.map((n) => {
-                const isUnread = n.memberId === data.user.id && !n.readAt;
-                return (
-                  <div
-                    key={n.id}
-                    className="assignment-row"
-                    style={{
-                      alignItems: 'flex-start',
-                      borderLeft: isUnread ? '4px solid var(--accent)' : undefined,
-                      background: isUnread ? '#fffaf7' : undefined,
+              {data.notifications.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={working}
+                    onClick={async () => {
+                      await api.markAllNotificationsRead();
+                      await onRefresh();
+                      onToast('Marked read.');
                     }}
                   >
-                    <div className="assignment-main">
-                      <div className="assignment-title">
-                        <span>{n.subject}</span>
-                        {isUnread && <span className="tag accent">Unread</span>}
-                        <span className="tag primary">{n.channel}</span>
-                      </div>
-                      <p style={{ whiteSpace: 'pre-line', fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                        {n.body}
-                      </p>
-                      <div className="assignment-meta">
-                        <span>{n.memberEmail}</span>
-                        <span>&middot; {new Date(n.createdAt).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    <CheckCheck size={14} /> Mark Mine Read
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger-ghost btn-sm"
+                    disabled={working}
+                    onClick={async () => {
+                      if (!window.confirm('Clear all notifications?')) return;
+                      setWorking(true);
+                      try {
+                        const res = await api.clearAllNotifications();
+                        await onRefresh();
+                        onToast(`Cleared ${res.deletedCount} notification${res.deletedCount === 1 ? '' : 's'}.`);
+                      } catch (err: any) {
+                        onToast(err.message || 'Could not clear notifications.');
+                      } finally {
+                        setWorking(false);
+                      }
+                    }}
+                  >
+                    <Trash2 size={14} /> Clear All
+                  </button>
+                </div>
+              )}
             </div>
+            {data.notifications.length === 0 ? (
+              <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)', padding: '12px 0' }}>
+                No notifications right now.
+              </p>
+            ) : (
+              <div className="chore-list">
+                {data.notifications.map((n) => {
+                  const isUnread = n.memberId === data.user.id && !n.readAt;
+                  const canDelete = data.user.role === 'admin' || n.memberId === data.user.id;
+                  return (
+                    <div
+                      key={n.id}
+                      className="assignment-row"
+                      style={{
+                        alignItems: 'flex-start',
+                        borderLeft: isUnread ? '4px solid var(--accent)' : undefined,
+                        background: isUnread ? '#fffaf7' : undefined,
+                      }}
+                    >
+                      <div className="assignment-main">
+                        <div className="assignment-title">
+                          <span>{n.subject}</span>
+                          {isUnread && <span className="tag accent">Unread</span>}
+                          <span className="tag primary">{n.channel}</span>
+                        </div>
+                        <p style={{ whiteSpace: 'pre-line', fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                          {n.body}
+                        </p>
+                        <div className="assignment-meta">
+                          <span>{n.memberEmail}</span>
+                          <span>&middot; {new Date(n.createdAt).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          className="btn btn-danger-ghost btn-sm"
+                          disabled={working}
+                          title="Delete notification"
+                          aria-label={`Delete notification ${n.subject}`}
+                          onClick={async () => {
+                            setWorking(true);
+                            try {
+                              await api.deleteNotification(n.id);
+                              await onRefresh();
+                              onToast('Deleted notification.');
+                            } catch (err: any) {
+                              onToast(err.message || 'Could not delete notification.');
+                            } finally {
+                              setWorking(false);
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

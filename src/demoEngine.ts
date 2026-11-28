@@ -2335,6 +2335,21 @@ export const demoApi = {
     return { ok: true };
   },
 
+  async deleteNotification(id: string) {
+    const state = loadState();
+    state.notifications = state.notifications.filter((n) => n.id !== id);
+    saveState(state);
+    return { ok: true };
+  },
+
+  async clearAllNotifications() {
+    const state = loadState();
+    const deletedCount = state.notifications.length;
+    state.notifications = [];
+    saveState(state);
+    return { ok: true, deletedCount };
+  },
+
   async syncSheet() {
     return { ok: true };
   },

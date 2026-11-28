@@ -3006,6 +3006,34 @@ export function createApiHandler(db = new SheetDatabase()) {
         return sendJson(res, 200, { ok: true });
       }
 
+      if (method === 'DELETE' && normalizedPath === '/api/notifications') {
+        const deletedCount = await db.mutate((d) => {
+          const before = d.Notifications.length;
+          d.Notifications = d.Notifications.filter((n) => {
+            if (n.householdId !== hhId) return true;
+            if (member.role === 'admin') return false;
+            return n.memberId !== member.id;
+          });
+          return before - d.Notifications.length;
+        });
+        return sendJson(res, 200, { ok: true, deletedCount });
+      }
+
+      if (method === 'DELETE' && normalizedPath.startsWith('/api/notifications/')) {
+        const notifId = decodeURIComponent(normalizedPath.slice('/api/notifications/'.length));
+        const deleted = await db.mutate((d) => {
+          const before = d.Notifications.length;
+          d.Notifications = d.Notifications.filter((n) => {
+            if (n.householdId !== hhId || n.id !== notifId) return true;
+            if (member.role !== 'admin' && n.memberId !== member.id) return true;
+            return false;
+          });
+          return before !== d.Notifications.length;
+        });
+        if (!deleted) return sendJson(res, 404, { error: 'Notification not found.' });
+        return sendJson(res, 200, { ok: true });
+      }
+
       // -----------------------------------------------------------------------
       // Site-Wide Administration (Strictly locked to SITE_ADMIN_EMAILS)
       // -----------------------------------------------------------------------
